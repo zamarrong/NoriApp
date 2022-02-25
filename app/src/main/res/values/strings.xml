@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">Nori</string>
+    <string name="navigation_drawer_open">Abrir menú</string>
+    <string name="navigation_drawer_close">Cerrar menú</string>
+    <string name="nav_header_title">Nori</string>
+    <string name="nav_header_subtitle">soporte@nori.mx</string>
+    <string name="nav_header_desc">Móvil</string>
+    <string name="action_settings">Configuración</string>
+    <string name="action_search">Busqueda</string>
+    <string name="action_api_url">API URL</string>
+    <string name="action_get_deviceID">ID Dispositivo</string>
+</resources>

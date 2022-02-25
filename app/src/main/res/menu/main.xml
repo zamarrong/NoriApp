@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_api_url"
+        android:orderInCategory="100"
+        android:title="@string/action_api_url"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_get_deviceID"
+        android:orderInCategory="101"
+        android:title="@string/action_get_deviceID"
+        app:showAsAction="never" />
+</menu>

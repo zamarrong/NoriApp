@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:showIn="navigation_view">
+
+    <group android:checkableBehavior="single">
+        <item
+            android:id="@+id/nav_principal"
+            android:title="Nori" />
+
+        <item android:title="Ruta">
+            <menu>
+                <item
+                    android:id="@+id/nav_ruta"
+                    android:title="Ruta" />
+                <item
+                    android:id="@+id/nav_actividades"
+                    android:title="Actividades" />
+                <item
+                    android:id="@+id/nav_mapa"
+                    android:title="Mapa" />
+            </menu>
+        </item>
+
+        <item android:title="Ventas">
+            <menu>
+                <item
+                    android:id="@+id/nav_cotizaciones"
+                    android:title="Cotizaciones" />
+                <item
+                    android:id="@+id/nav_pedidos"
+                    android:title="Pedidos" />
+                <item
+                    android:id="@+id/nav_entregas"
+                    android:title="Entregas" />
+                <item
+                    android:id="@+id/nav_devoluciones"
+                    android:title="Devoluciones" />
+                <item
+                    android:id="@+id/nav_facturas"
+                    android:title="Facturas" />
+                <item
+                    android:id="@+id/nav_notas_credito"
+                    android:title="Notas de crédito" />
+            </menu>
+        </item>
+
+        <item android:title="Socios">
+            <menu>
+                <item
+                    android:id="@+id/nav_socios"
+                    android:title="Socios" />
+            </menu>
+        </item>
+
+        <item android:title="Inventario">
+            <menu>
+                <item
+                    android:id="@+id/nav_articulos"
+                    android:title="Artículos" />
+                <item
+                    android:id="@+id/nav_solicitudes_traslado"
+                    android:title="Solicitudes de traslado" />
+                <item
+                    android:id="@+id/nav_inventarios_fisicos"
+                    android:title="Inventarios físicos" />
+            </menu>
+        </item>
+
+        <item android:title="Informes">
+            <menu>
+                <item
+                    android:id="@+id/nav_informes_documentos"
+                    android:title="Documentos" />
+                <item
+                    android:id="@+id/nav_informes_inventario"
+                    android:title="Inventario" />
+                <item
+                    android:id="@+id/nav_informes_flujo"
+                    android:title="Flujo" />
+            </menu>
+        </item>
+
+        <item android:title="Sincronización">
+            <menu>
+                <item
+                    android:id="@+id/nav_sincronizacion_general"
+                    android:title="General" />
+                <item
+                    android:id="@+id/nav_sincronizacion_socios"
+                    android:title="Socios" />
+                <item
+                    android:id="@+id/nav_sincronizacion_articulos"
+                    android:title="Artículos" />
+            </menu>
+        </item>
+
+        <item android:title="Más">
+            <menu>
+                <item
+                    android:id="@+id/nav_configuracion"
+                    android:title="Configuración" />
+            </menu>
+        </item>
+    </group>
+</menu>
