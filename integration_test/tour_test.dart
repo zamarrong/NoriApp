@@ -124,7 +124,7 @@ void main() {
     }
 
     Future<void> shot(String name) async {
-      if (_only.isNotEmpty && !_only.split(',').any(name.startsWith)) return;
+      if (_only.isNotEmpty && !_only.split(',').any(name.startsWith)) return wait(700);
       await wait(1400);
       // ignore: avoid_print
       print('SHOT:$name');
@@ -168,8 +168,18 @@ void main() {
       await shot('04_vender_$t');
 
       if (items.isNotEmpty) {
+        final favorites = container.read(quickCaptureProvider).favorites;
+        container.read(quickCaptureProvider.notifier).setFavorites([for (final it in items) (it['id'] as num).toInt()]);
         await push(QuickCapturePage(customerId: (customer['id'] as num).toInt(), customerName: '${customer['trade_name'] ?? customer['name']}', title: 'Venta'));
+        await wait(800);
+        final plus = find.byIcon(Icons.add_rounded);
+        if (plus.evaluate().length > 2) {
+          await tester.tap(plus.at(0));
+          await tester.tap(plus.at(0));
+          await tester.tap(plus.at(2));
+        }
         await shot('05_captura_rapida_$t');
+        container.read(quickCaptureProvider.notifier).setFavorites(favorites);
         pop();
         await wait(500);
 

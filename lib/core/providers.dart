@@ -269,6 +269,21 @@ class ThemeModeNotifier extends Notifier<ThemeMode> {
 
 final themeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeMode>(ThemeModeNotifier.new);
 
+/// Alto contraste para trabajar a pleno sol (preferencia de este equipo).
+class HighContrastNotifier extends Notifier<bool> {
+  static const _key = 'nori.high_contrast';
+
+  @override
+  bool build() => ref.read(prefsProvider).getBool(_key) ?? false;
+
+  void set(bool v) {
+    ref.read(prefsProvider).setBool(_key, v);
+    state = v;
+  }
+}
+
+final highContrastProvider = NotifierProvider<HighContrastNotifier, bool>(HighContrastNotifier.new);
+
 /// Acento: el de la empresa (si el servidor lo expone) o el azul de Nori.
 final accentProvider = Provider<Color>((ref) {
   final session = ref.watch(sessionProvider);

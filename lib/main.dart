@@ -26,11 +26,15 @@ class NoriApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final accent = ref.watch(accentProvider);
+    final hc = ref.watch(highContrastProvider);
     return MaterialApp.router(
       title: 'Nori',
       debugShowCheckedModeBanner: false,
-      theme: NrTheme.light(accent),
-      darkTheme: NrTheme.dark(accent),
+      theme: NrTheme.light(accent, highContrast: hc),
+      darkTheme: NrTheme.dark(accent, highContrast: hc),
+      // "Aumentar contraste" del sistema también lo activa.
+      highContrastTheme: NrTheme.light(accent, highContrast: true),
+      highContrastDarkTheme: NrTheme.dark(accent, highContrast: true),
       themeMode: ref.watch(themeModeProvider),
       routerConfig: ref.watch(routerProvider),
       locale: const Locale('es', 'MX'),

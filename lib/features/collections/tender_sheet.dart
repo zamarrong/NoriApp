@@ -46,44 +46,126 @@ class _TenderSheetState extends State<_TenderSheet> {
     selected = widget.tenderTypes.firstOrNull;
   }
 
+  /// Ícono según el nombre de la forma de pago.
+  static IconData iconFor(Map<String, dynamic> t) {
+    final n = '${t['name'] ?? ''}'.toLowerCase();
+    if (n.contains('efectivo') || t['gives_change'] == true) return Icons.payments_rounded;
+    if (n.contains('transfer') || n.contains('spei') || n.contains('depósito')) return Icons.account_balance_rounded;
+    if (n.contains('tarjeta') || n.contains('crédito') || n.contains('débito')) return Icons.credit_card_rounded;
+    if (n.contains('cheque')) return Icons.request_page_rounded;
+    if (n.contains('vale')) return Icons.confirmation_number_rounded;
+    return Icons.account_balance_wallet_rounded;
+  }
+
+  /// Billetes con los que suelen pagar: el total exacto y redondeos hacia arriba.
+  List<Dec> _suggestions() {
+    final total = widget.total.toDouble();
+    final out = <double>{total};
+    for (final step in [50, 100, 200, 500, 1000]) {
+      final up = (total / step).ceil() * step.toDouble();
+      if (up > total && out.length < 4) out.add(up);
+    }
+    return out.map((v) => Dec.parse(v.toStringAsFixed(2))).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final nr = context.nr;
     final paid = Dec.tryParse(amount.text) ?? Dec.zero;
     final change = paid - widget.total;
     final givesChange = selected?['gives_change'] == true;
+    final short = paid < widget.total && paid > Dec.zero;
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(NrSpace.xl, 0, NrSpace.xl, NrSpace.xl),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(NrSpace.xl, 0, NrSpace.xl, NrSpace.lg),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text(widget.title, style: NrText.title(context)),
+          Text(widget.title.toUpperCase(), style: NrText.eyebrow(context), textAlign: TextAlign.center),
           const SizedBox(height: NrSpace.xs),
-          Text('Total ${money(widget.total)}', style: NrText.bodySm(context)),
-          const SizedBox(height: NrSpace.lg),
-          Wrap(spacing: NrSpace.sm, runSpacing: NrSpace.sm, children: [
-            for (final t in widget.tenderTypes)
-              ChoiceChip(label: Text('${t['name']}'), selected: selected?['id'] == t['id'], onSelected: (_) => setState(() => selected = t)),
-          ]),
+          Center(child: NrAmount(widget.total, size: 44, animate: true)),
+          Text('por cobrar', textAlign: TextAlign.center, style: NrText.bodySm(context)),
+          const SizedBox(height: NrSpace.xl),
+          SizedBox(
+            height: 76,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: widget.tenderTypes.length,
+              separatorBuilder: (_, _) => const SizedBox(width: NrSpace.sm),
+              itemBuilder: (_, i) {
+                final t = widget.tenderTypes[i];
+                final on = selected?['id'] == t['id'];
+                return SizedBox(
+                  width: 112,
+                  child: NrCard(
+                    depth: NrDepth.flat,
+                    padding: const EdgeInsets.all(NrSpace.md),
+                    color: on ? nr.accentSoft : null,
+                    borderColor: on ? nr.accent : null,
+                    onTap: () {
+                      NrHaptics.tap();
+                      setState(() => selected = t);
+                    },
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Icon(iconFor(t), size: 22, color: on ? (nr.night ? nr.link : nr.accent) : nr.secondary),
+                      const Spacer(),
+                      Text('${t['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: NrText.label(context).copyWith(fontWeight: FontWeight.w600, color: on ? nr.headline : nr.body)),
+                    ]),
+                  ),
+                );
+              },
+            ),
+          ),
           const SizedBox(height: NrSpace.lg),
           TextField(
             controller: amount,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            style: NrText.money(context, size: 22),
+            style: NrText.money(context, size: 28, weight: FontWeight.w700),
             decoration: const InputDecoration(labelText: 'Recibido', prefixText: r'$ '),
             onChanged: (_) => setState(() {}),
           ),
+          const SizedBox(height: NrSpace.sm),
+          Wrap(spacing: NrSpace.sm, runSpacing: NrSpace.sm, children: [
+            for (final (i, v) in _suggestions().indexed)
+              ChoiceChip(
+                label: Text(i == 0 ? 'Exacto' : money(v).replaceAll('.00', '')),
+                selected: paid == v,
+                onSelected: (_) {
+                  NrHaptics.tap();
+                  setState(() => amount.text = v.toFixed(2));
+                },
+              ),
+          ]),
           if (selected?['requires_reference'] == true) ...[
             const SizedBox(height: NrSpace.md),
-            TextField(controller: reference, decoration: const InputDecoration(labelText: 'Referencia')),
+            TextField(controller: reference, decoration: const InputDecoration(labelText: 'Referencia', prefixIcon: Icon(Icons.tag_rounded))),
           ],
-          if (givesChange && change > Dec.zero) ...[
-            const SizedBox(height: NrSpace.sm),
-            Text('Cambio ${money(change)}', style: NrText.headline(context).copyWith(color: context.nr.success)),
-          ],
-          const SizedBox(height: NrSpace.lg),
-          FilledButton(
+          AnimatedSize(
+            duration: NrMotion.base,
+            curve: NrMotion.ease,
+            child: (givesChange && change > Dec.zero) || short
+                ? Padding(
+                    padding: const EdgeInsets.only(top: NrSpace.md),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: NrSpace.lg, vertical: NrSpace.md),
+                      decoration: BoxDecoration(color: short ? nr.warningBg : nr.successBg, borderRadius: BorderRadius.circular(NrRadius.lg)),
+                      child: Row(children: [
+                        Icon(short ? Icons.pie_chart_outline_rounded : Icons.savings_rounded, color: short ? nr.warning : nr.success),
+                        const SizedBox(width: NrSpace.sm),
+                        Expanded(child: Text(short ? 'Falta por cubrir' : 'Cambio', style: NrText.headline(context).copyWith(color: short ? nr.warning : nr.success))),
+                        NrAmount(short ? widget.total - paid : change, size: 22, animate: true, color: short ? nr.warning : nr.success),
+                      ]),
+                    ),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+          const SizedBox(height: NrSpace.xl),
+          NrButton(
+            label: paid > Dec.zero ? 'Cobrar ${money(paid)}' : 'Cobrar',
+            icon: Icons.check_rounded,
             onPressed: selected == null || paid <= Dec.zero
                 ? null
-                : () => Navigator.pop(
+                : () {
+                    NrHaptics.action();
+                    Navigator.pop(
                       context,
                       TenderChoice(tenders: [
                         {
@@ -92,12 +174,17 @@ class _TenderSheetState extends State<_TenderSheet> {
                           if (reference.text.trim().isNotEmpty) 'reference': reference.text.trim(),
                         }
                       ]),
-                    ),
-            child: const Text('Cobrar'),
+                    );
+                  },
           ),
           if (widget.allowCredit) ...[
             const SizedBox(height: NrSpace.sm),
-            OutlinedButton(onPressed: () => Navigator.pop(context, const TenderChoice(tenders: [], onCredit: true)), child: const Text('Dejar a crédito')),
+            NrButton(
+              label: 'Dejar a crédito',
+              icon: Icons.schedule_rounded,
+              variant: NrButtonVariant.secondary,
+              onPressed: () => Navigator.pop(context, const TenderChoice(tenders: [], onCredit: true)),
+            ),
           ],
         ]),
       ),

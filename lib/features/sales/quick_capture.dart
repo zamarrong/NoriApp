@@ -155,8 +155,14 @@ Future<void> rememberLastOrder(LocalDb db, int customerId, List<CartLine> lines)
     for (final l in lines)
       if (l.uomId == null && l.choices == null && l.baseLineId == null) {'item_id': l.itemId, 'quantity': l.quantity.toJson(4)},
   ];
-  if (rows.isNotEmpty) await db.putJson(_lastOrderKey(customerId), rows);
+  if (rows.isNotEmpty) {
+    await db.putJson(_lastOrderKey(customerId), rows);
+    await db.putJson(lastOrderAtKey(customerId), {'at': DateTime.now().toIso8601String(), 'lines': rows.length});
+  }
 }
+
+/// Cuándo se le vendió por última vez desde este equipo (y cuántos renglones).
+String lastOrderAtKey(int customerId) => 'last_order_at_$customerId';
 
 Future<Map<int, Dec>> lastOrder(LocalDb db, int customerId) async => {
       for (final r in asList(await db.getJson(_lastOrderKey(customerId)))) (r['item_id'] as num).toInt(): Dec.parse(r['quantity']),
@@ -216,6 +222,7 @@ class _QuickCapturePageState extends ConsumerState<QuickCapturePage> {
   final nodes = <int, FocusNode>{};
   bool loading = true;
   Object? error;
+  String filter = '';
 
   @override
   void initState() {
@@ -322,34 +329,38 @@ class _QuickCapturePageState extends ConsumerState<QuickCapturePage> {
   Widget build(BuildContext context) {
     final nr = context.nr;
     final count = qty.values.where((q) => q > Dec.zero).length;
-    final subtitle = switch (source) {
-      QuickSource.truck => 'Lo cargado en el camión',
-      QuickSource.favorites => 'Mis favoritos',
-      QuickSource.frequent => 'Lo más vendido en 30 días',
-      null => '',
+    final (sourceLabel, sourceIcon) = switch (source) {
+      QuickSource.truck => ('Lo cargado en el camión', Icons.local_shipping_rounded),
+      QuickSource.favorites => ('Mis favoritos', Icons.star_rounded),
+      QuickSource.frequent => ('Lo más vendido en 30 días', Icons.trending_up_rounded),
+      null => ('', Icons.list_rounded),
     };
+    final f = filter.trim().toLowerCase();
+    final visible = [
+      for (var i = 0; i < items.length; i++)
+        if (f.isEmpty || items[i].name.toLowerCase().contains(f) || '${items[i].item['code'] ?? ''}'.toLowerCase().contains(f)) i,
+    ];
     return Scaffold(
       appBar: AppBar(
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(widget.title),
-          Text(widget.customerName, style: NrText.caption(context)),
+          Text(widget.customerName, style: NrText.caption(context), maxLines: 1, overflow: TextOverflow.ellipsis),
         ]),
         actions: [
-          if (last.isNotEmpty) IconButton(icon: const Icon(Icons.replay), tooltip: 'Repetir último pedido', onPressed: _repeatLast),
           if (qty.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.clear_all),
-              tooltip: 'Limpiar',
+            TextButton(
               onPressed: () => setState(() {
+                NrHaptics.action();
                 for (final i in items) {
                   _setQty(i.id, Dec.zero);
                 }
               }),
+              child: const Text('Limpiar'),
             ),
         ],
       ),
       body: loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const NrSkeletonList(count: 7)
           : error != null
               ? NrErrorView(error!, onRetry: () {
                   setState(() {
@@ -358,40 +369,58 @@ class _QuickCapturePageState extends ConsumerState<QuickCapturePage> {
                   });
                   _load();
                 })
-              : ListView(padding: const EdgeInsets.fromLTRB(NrSpace.gutter, NrSpace.sm, NrSpace.gutter, 140), children: [
+              : ListView(padding: const EdgeInsets.fromLTRB(NrSpace.gutter, NrSpace.xs, NrSpace.gutter, NrSpace.xxxl), children: [
                   Row(children: [
-                    Expanded(child: Text(subtitle.toUpperCase(), style: NrText.eyebrow(context))),
+                    Icon(sourceIcon, size: 16, color: nr.secondary),
+                    const SizedBox(width: 6),
+                    Expanded(child: Text(sourceLabel.toUpperCase(), style: NrText.eyebrow(context))),
                     if (last.isNotEmpty)
-                      TextButton.icon(onPressed: _repeatLast, icon: const Icon(Icons.replay, size: 18), label: const Text('Repetir último')),
+                      TextButton.icon(onPressed: _repeatLast, icon: const Icon(Icons.replay_rounded, size: 18), label: const Text('Repetir último')),
                   ]),
+                  if (items.length > 8) ...[
+                    const SizedBox(height: NrSpace.xs),
+                    NrSearchField(hint: 'Filtrar la lista', onChanged: (v) => setState(() => filter = v)),
+                  ],
+                  const SizedBox(height: NrSpace.sm),
                   if (items.isEmpty)
                     NrEmpty(
-                      icon: Icons.inventory_2_outlined,
-                      title: 'Sin artículos en la lista',
+                      icon: source == QuickSource.truck ? Icons.local_shipping_rounded : Icons.star_rounded,
+                      title: 'La libreta está vacía',
                       message: source == QuickSource.truck
                           ? 'El camión no tiene carga registrada (o no se ha descargado sin señal).'
                           : 'Elige tus favoritos en Más › Configuración o agrega artículos aquí.',
+                      action: 'Agregar artículo',
+                      onAction: _addOther,
                     )
                   else
-                    NrGroup(children: [for (var i = 0; i < items.length; i++) _row(context, i)]),
-                  const SizedBox(height: NrSpace.md),
-                  OutlinedButton.icon(onPressed: _addOther, icon: const Icon(Icons.add), label: const Text('Otro artículo')),
+                    for (final (n, i) in visible.indexed)
+                      Padding(padding: const EdgeInsets.only(bottom: NrSpace.sm), child: NrEntrance(index: n, child: _row(context, i))),
+                  if (items.isNotEmpty) ...[
+                    const SizedBox(height: NrSpace.xs),
+                    NrButton(label: 'Otro artículo', icon: Icons.add_rounded, variant: NrButtonVariant.secondary, height: NrTouch.min, onPressed: _addOther),
+                  ],
                 ]),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(NrSpace.lg, NrSpace.md, NrSpace.lg, NrSpace.md),
-          decoration: BoxDecoration(color: nr.surface, border: Border(top: BorderSide(color: nr.border))),
-          child: Row(children: [
-            Expanded(
-              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('$count ${count == 1 ? 'artículo' : 'artículos'}', style: NrText.caption(context)),
-                Text(money(_total), style: NrText.money(context, size: 22)),
-              ]),
-            ),
-            FilledButton.icon(onPressed: count == 0 ? null : _continue, icon: const Icon(Icons.arrow_forward), label: const Text('Continuar')),
-          ]),
-        ),
+      bottomNavigationBar: NrBottomBar(
+        child: Row(children: [
+          Expanded(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              AnimatedSwitcher(
+                duration: NrMotion.fast,
+                child: Text('$count ${count == 1 ? 'artículo' : 'artículos'}', key: ValueKey(count), style: NrText.caption(context)),
+              ),
+              NrAmount(_total, size: 24, animate: true),
+            ]),
+          ),
+          NrButton(
+            label: 'Continuar',
+            icon: Icons.arrow_forward_rounded,
+            expand: false,
+            onPressed: count == 0 ? null : () {
+              NrHaptics.action();
+              _continue();
+            },
+          ),
+        ]),
       ),
     );
   }
@@ -399,41 +428,61 @@ class _QuickCapturePageState extends ConsumerState<QuickCapturePage> {
   Widget _row(BuildContext context, int index) {
     final i = items[index];
     final q = qty[i.id] ?? Dec.zero;
+    final active = q > Dec.zero;
     final over = i.onHand != null && q > i.onHand!;
+    final low = i.onHand != null && !over && active && q.toDouble() >= i.onHand!.toDouble() * 0.8;
     final nr = context.nr;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: NrSpace.md, vertical: NrSpace.sm),
+    return AnimatedContainer(
+      duration: NrMotion.base,
+      curve: NrMotion.ease,
+      decoration: BoxDecoration(
+        color: active ? Color.alphaBlend(nr.accent.withValues(alpha: nr.night ? 0.10 : 0.05), nr.surface) : nr.surface,
+        borderRadius: BorderRadius.circular(NrRadius.xxl),
+        border: Border.all(color: over ? nr.danger : (active ? nr.accent.withValues(alpha: 0.5) : (nr.night || nr.highContrast ? nr.border : Colors.transparent)), width: active || over ? 1.5 : 1),
+        boxShadow: active ? null : nr.shadow,
+      ),
+      padding: const EdgeInsets.fromLTRB(NrSpace.md, NrSpace.md, NrSpace.sm, NrSpace.md),
       child: Row(children: [
+        NrThumb(name: i.name, url: i.item['image_url'] as String?, size: 46),
+        const SizedBox(width: NrSpace.md),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(i.name, style: NrText.headline(context), maxLines: 2, overflow: TextOverflow.ellipsis),
-            Text(
-              [
-                '${i.item['code'] ?? ''}',
-                ?i.uom,
-                if (i.price != null) money(i.price),
-                if (i.onHand != null) '${source == QuickSource.truck ? 'Camión' : 'Exist.'} ${i.onHand!.toQty()}',
-              ].where((e) => e.isNotEmpty).join(' · '),
-              style: NrText.caption(context).copyWith(color: over ? nr.danger : null),
-            ),
+            Text(i.name, style: NrText.headline(context).copyWith(fontSize: 15), maxLines: 2, overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 3),
+            Row(children: [
+              if (i.price != null) Text(money(i.price), style: NrText.money(context, size: 13).copyWith(color: nr.body)),
+              if (i.price != null && i.onHand != null) const SizedBox(width: 6),
+              if (i.onHand != null)
+                Flexible(
+                  child: NrPill(
+                    '${i.onHand!.toQty()} ${source == QuickSource.truck ? 'en camión' : 'disp.'}',
+                    tone: over ? NrTone.danger : (low ? NrTone.warning : (i.onHand! <= Dec.zero ? NrTone.danger : NrTone.neutral)),
+                  ),
+                ),
+            ]),
+            if ('${i.item['code'] ?? ''}'.isNotEmpty) Text('${i.item['code']}${i.uom == null ? '' : ' · ${i.uom}'}', style: NrText.caption(context).copyWith(fontSize: 11)),
           ]),
         ),
-        IconButton(
-          iconSize: 30,
-          icon: const Icon(Icons.remove_circle_outline),
-          onPressed: q.isZero ? null : () => setState(() => _setQty(i.id, q - Dec.one)),
-        ),
+        _padBtn(context, Icons.remove_rounded, q.isZero ? null : () => setState(() => _setQty(i.id, q - Dec.one))),
         SizedBox(
-          width: 64,
+          width: 56,
           child: TextField(
             controller: ctrls[i.id],
             focusNode: nodes[i.id],
             textAlign: TextAlign.center,
-            style: NrText.money(context, size: 22).copyWith(color: over ? nr.danger : null),
+            style: NrText.money(context, size: 22, weight: FontWeight.w700).copyWith(color: over ? nr.danger : (active ? (nr.night ? nr.link : nr.accent) : null)),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
             textInputAction: index + 1 < items.length ? TextInputAction.next : TextInputAction.done,
-            decoration: const InputDecoration(hintText: '0', isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 10)),
+            decoration: InputDecoration(
+              hintText: '0',
+              isDense: true,
+              filled: false,
+              contentPadding: const EdgeInsets.symmetric(vertical: 10),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: nr.accent, width: 2)),
+            ),
             onChanged: (v) => setState(() {
               final d = Dec.tryParse(v) ?? Dec.zero;
               if (d.isZero) {
@@ -445,12 +494,26 @@ class _QuickCapturePageState extends ConsumerState<QuickCapturePage> {
             onSubmitted: (_) => _next(index),
           ),
         ),
-        IconButton(
-          iconSize: 30,
-          icon: const Icon(Icons.add_circle_outline),
-          onPressed: () => setState(() => _setQty(i.id, q + Dec.one)),
-        ),
+        _padBtn(context, Icons.add_rounded, () => setState(() => _setQty(i.id, q + Dec.one)), primary: true),
       ]),
+    );
+  }
+
+  Widget _padBtn(BuildContext context, IconData icon, VoidCallback? onTap, {bool primary = false}) {
+    final nr = context.nr;
+    return Material(
+      color: primary ? nr.accent : (nr.night ? nr.raised : nr.sunken),
+      borderRadius: BorderRadius.circular(NrRadius.lg),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(NrRadius.lg),
+        onTap: onTap == null
+            ? null
+            : () {
+                NrHaptics.tap();
+                onTap();
+              },
+        child: SizedBox.square(dimension: 44, child: Icon(icon, color: primary ? nr.onAccent : (onTap == null ? nr.muted : nr.headline))),
+      ),
     );
   }
 }

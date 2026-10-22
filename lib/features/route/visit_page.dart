@@ -74,10 +74,11 @@ class _VisitPageState extends ConsumerState<VisitPage> {
     try {
       final r = await sendWithAuthorization(context, ref, OutboxOp.create('POST', '$_base/$action', body: body, label: label));
       if (r == null) return null;
+      NrHaptics.success();
       final repo = ref.read(routeRepoProvider);
       if (r.queued) {
         if (optimistic != null) await repo.patchStop(widget.visitId, optimistic);
-        if (mounted) showSnack(context, 'Guardado sin señal; se enviará solo.');
+        if (mounted) showSnack(context, 'Guardado sin señal; se enviará solo.', tone: NrTone.warning);
       } else {
         final visit = asMap(asMap(r.response)['visit']);
         if (visit.isNotEmpty) await repo.saveVisit(visit);
@@ -199,88 +200,196 @@ class _VisitPageState extends ConsumerState<VisitPage> {
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(visitProvider(widget.visitId));
+    final v = async.valueOrNull?.value;
+    final status = v?['status'] as String?;
     return Scaffold(
       appBar: AppBar(title: const Text('Visita'), actions: [
-        if (async.valueOrNull != null)
-          IconButton(icon: const Icon(Icons.print_outlined), tooltip: 'Imprimir comprobante', onPressed: () => _printVisit(async.value!.value)),
+        if (v != null) IconButton(icon: const Icon(Icons.print_outlined), tooltip: 'Imprimir comprobante', onPressed: () => _printVisit(v)),
         const SyncIndicator(),
       ]),
       body: async.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const NrSkeletonList(header: true, count: 4),
         error: (e, _) => NrErrorView(e, onRetry: () => ref.invalidate(visitProvider(widget.visitId))),
         data: (c) => _body(context, c.value, c.offline),
       ),
+      bottomNavigationBar: switch (status) {
+        'pending' => NrBottomAction(
+            label: 'Llegué con el cliente',
+            icon: Icons.where_to_vote_rounded,
+            busy: busy,
+            onPressed: _checkIn,
+            secondary: NrButton(
+              label: 'No visitaré a este cliente',
+              variant: NrButtonVariant.ghost,
+              height: NrTouch.min,
+              onPressed: busy ? null : () => _reason('skip', 'skip', 'Motivo de no visita'),
+            ),
+          ),
+        'in_progress' => NrBottomAction(label: 'Terminar visita', icon: Icons.logout_rounded, busy: busy, onPressed: _checkOut),
+        _ => null,
+      },
     );
   }
 
   Widget _body(BuildContext context, Map<String, dynamic> v, bool offline) {
     final customer = asMap(v['customer']);
     final status = v['status'] as String?;
-    final pending = status == 'pending';
-    final inProgress = status == 'in_progress';
     final actions = asList(v['reasons']).map((r) => r['action']).toSet();
     final orders = asList(v['orders']);
     final assets = asList(v['assets']);
+    final owed = asList(v['owed']);
     final owedTotal = Dec.parse(v['owed_total']);
+    final overdue = owed.where((d) => d['overdue'] == true).length;
     final customerId = (customer['id'] as num?)?.toInt();
     final session = ref.watch(sessionProvider);
     final nr = context.nr;
+    final phone = customer['phone'] as String?;
+    final window = v['window'] is List ? (v['window'] as List).join('–') : null;
+    final working = status == 'in_progress' || status == 'completed';
 
-    Widget tile(IconData icon, String label, VoidCallback? onTap, {bool highlight = false, String? badge}) => NrCard(
-          padding: const EdgeInsets.all(NrSpace.md),
-          borderColor: highlight ? nr.accent : null,
-          onTap: busy ? null : onTap,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Icon(icon, color: highlight ? nr.accent : nr.secondary),
-              const Spacer(),
-              if (badge != null) NrPill(badge, tone: NrTone.warning),
-            ]),
-            const SizedBox(height: NrSpace.sm),
-            Text(label, style: NrText.headline(context)),
-          ]),
-        );
+    Future<void> collect() async {
+      final tenders = asList(asMap(await ref.read(localDbProvider).getJson(RouteRepo.todayKey))['tenders']);
+      if (!context.mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => CollectionPage(
+          customerId: customerId!,
+          customerName: '${customer['name']}',
+          visitId: widget.visitId,
+          tenderTypes: tenders.isEmpty ? null : tenders,
+        ),
+      ));
+      ref.invalidate(visitProvider(widget.visitId));
+    }
 
-    return ListView(padding: const EdgeInsets.all(NrSpace.gutter), children: [
-      if (offline) const Padding(padding: EdgeInsets.only(bottom: NrSpace.md), child: NrPill('Sin señal: datos guardados', tone: NrTone.warning, icon: Icons.cloud_off)),
+    final tiles = <Widget>[
+      NrTile(icon: Icons.shopping_bag_rounded, title: 'Venta', subtitle: 'Del camión, con cobro', color: NrColors.hues[0], highlight: actions.contains('sale'), onTap: busy ? null : () => _cart(v, 'sale')),
+      NrTile(icon: Icons.receipt_long_rounded, title: 'Pedido', subtitle: 'Para entregar después', color: NrColors.hues[2], highlight: actions.contains('order'), onTap: busy ? null : () => _cart(v, 'order')),
+      if (orders.isNotEmpty)
+        NrTile(
+          icon: Icons.local_shipping_rounded,
+          title: 'Entrega',
+          subtitle: '${orders.length} ${orders.length == 1 ? 'pedido' : 'pedidos'} por entregar',
+          color: NrColors.hues[5],
+          highlight: true,
+          badge: '${orders.length}',
+          badgeTone: NrTone.accent,
+          onTap: busy
+              ? null
+              : () async {
+                  await Navigator.of(context).push(MaterialPageRoute(builder: (_) => DeliveryPage(visit: v)));
+                  ref.invalidate(visitProvider(widget.visitId));
+                },
+        ),
+      if (customerId != null && (session?.canCollect ?? false))
+        NrTile(
+          icon: Icons.payments_rounded,
+          title: 'Cobro',
+          subtitle: owedTotal > Dec.zero ? 'Debe ${money(owedTotal)}' : 'Pago a cuenta',
+          color: NrColors.hues[1],
+          highlight: actions.contains('collection') || owedTotal > Dec.zero,
+          badge: overdue > 0 ? 'Vencido' : null,
+          badgeTone: NrTone.danger,
+          onTap: busy ? null : collect,
+        ),
+      NrTile(icon: Icons.assignment_return_rounded, title: 'Recolección', subtitle: 'Producto de regreso', color: NrColors.hues[4], highlight: actions.contains('pickup'), onTap: busy ? null : () => _cart(v, 'pickup')),
+      if (assets.isNotEmpty)
+        NrTile(
+          icon: Icons.kitchen_rounded,
+          title: 'Mantenimiento',
+          subtitle: '${assets.length} ${assets.length == 1 ? 'equipo' : 'equipos'}',
+          color: NrColors.hues[3],
+          highlight: actions.contains('asset_service'),
+          badge: assets.any((a) => a['service_due'] == true) ? 'Toca' : null,
+          onTap: busy
+              ? null
+              : () async {
+                  await Navigator.of(context).push(MaterialPageRoute(builder: (_) => AssetServicePage(visit: v)));
+                  ref.invalidate(visitProvider(widget.visitId));
+                },
+        ),
+      NrTile(icon: Icons.do_not_disturb_on_rounded, title: 'No venta', subtitle: 'Registrar el motivo', color: nr.muted, onTap: busy ? null : () => _reason('no_sale', 'no-sale', 'Motivo de no venta')),
+    ];
+
+    return ListView(padding: const EdgeInsets.fromLTRB(NrSpace.gutter, NrSpace.xs, NrSpace.gutter, NrSpace.xxxl), children: [
+      if (offline) const Padding(padding: EdgeInsets.only(bottom: NrSpace.md), child: NrBanner(message: 'Sin señal: datos guardados. Lo que registres se envía solo.')),
       NrCard(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            NrAvatar('${customer['name'] ?? ''}'),
+        depth: NrDepth.floating,
+        radius: NrRadius.hero,
+        padding: const EdgeInsets.fromLTRB(NrSpace.lg, NrSpace.lg, NrSpace.lg, NrSpace.md),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Hero(
+              tag: 'stop-${v['id']}',
+              child: Container(
+                width: 52,
+                height: 52,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: switch (status) { 'completed' => nr.success, 'skipped' => nr.danger, 'in_progress' => nr.accent, _ => nr.ink },
+                ),
+                child: status == 'completed'
+                    ? const Icon(Icons.check_rounded, color: Colors.white, size: 28)
+                    : Text('${v['sequence'] ?? ''}', style: NrText.title(context).copyWith(color: status == 'in_progress' ? nr.onAccent : (status == 'skipped' ? Colors.white : nr.onInk))),
+              ),
+            ),
             const SizedBox(width: NrSpace.md),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('${customer['name'] ?? ''}', style: NrText.headline(context)),
-                Text('${customer['code'] ?? ''}', style: NrText.caption(context)),
+                Text('${customer['name'] ?? ''}', style: NrText.title(context)),
+                const SizedBox(height: 2),
+                Text([?customer['code'] as String?, ?customer['address'] as String?].join(' · '), style: NrText.bodySm(context), maxLines: 2, overflow: TextOverflow.ellipsis),
               ]),
             ),
-            NrPill('${v['status_label'] ?? status}', tone: stopTone(status)),
           ]),
-          if (customer['address'] != null) ...[const SizedBox(height: NrSpace.sm), Text('${customer['address']}', style: NrText.bodySm(context))],
           const SizedBox(height: NrSpace.md),
-          Wrap(spacing: NrSpace.sm, children: [
-            if (v['navigate_url'] != null)
-              ActionChip(avatar: const Icon(Icons.directions, size: 18), label: const Text('Cómo llegar'), onPressed: () => launchUrl(Uri.parse('${v['navigate_url']}'), mode: LaunchMode.externalApplication)),
-            if (customer['phone'] != null) ...[
-              ActionChip(avatar: const Icon(Icons.call, size: 18), label: const Text('Llamar'), onPressed: () => launchUrl(Uri.parse('tel:${customer['phone']}'))),
-              ActionChip(
-                avatar: const Icon(Icons.chat_outlined, size: 18),
-                label: const Text('WhatsApp'),
-                onPressed: () => launchUrl(Uri.parse('https://wa.me/52${'${customer['phone']}'.replaceAll(RegExp(r'\D'), '')}'), mode: LaunchMode.externalApplication),
-              ),
-            ],
-            if (customerId != null)
-              ActionChip(avatar: const Icon(Icons.person_outline, size: 18), label: const Text('Cliente 360'), onPressed: () => context.push('/customers/$customerId')),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            NrPill('${v['status_label'] ?? status}', tone: stopTone(status), dot: true),
+            if (window != null) NrPill(window, icon: Icons.schedule_rounded),
+            if (v['check_in_at'] != null) NrPill('Llegada ${'${v['check_in_at']}'.length >= 16 ? '${v['check_in_at']}'.substring(11, 16) : ''}', icon: Icons.login_rounded),
+          ]),
+          const SizedBox(height: NrSpace.md),
+          Divider(color: nr.border, height: 1),
+          const SizedBox(height: NrSpace.sm),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+            NrIconAction(
+              icon: Icons.near_me_rounded,
+              label: 'Navegar',
+              color: NrColors.hues[0],
+              onTap: v['navigate_url'] == null ? null : () => launchUrl(Uri.parse('${v['navigate_url']}'), mode: LaunchMode.externalApplication),
+            ),
+            NrIconAction(icon: Icons.call_rounded, label: 'Llamar', color: NrColors.hues[1], onTap: phone == null ? null : () => launchUrl(Uri.parse('tel:$phone'))),
+            NrIconAction(
+              icon: Icons.chat_rounded,
+              label: 'WhatsApp',
+              color: NrColors.hues[6],
+              onTap: phone == null ? null : () => launchUrl(Uri.parse('https://wa.me/52${phone.replaceAll(RegExp(r'\D'), '')}'), mode: LaunchMode.externalApplication),
+            ),
+            NrIconAction(icon: Icons.person_rounded, label: 'Cliente', color: NrColors.hues[2], onTap: customerId == null ? null : () => context.push('/customers/$customerId')),
           ]),
         ]),
       ),
-      const SizedBox(height: NrSpace.lg),
-      if (pending) ...[
-        FilledButton.icon(onPressed: busy ? null : _checkIn, icon: const Icon(Icons.login), label: const Text('Llegué (registrar llegada)')),
-        const SizedBox(height: NrSpace.sm),
-        OutlinedButton(onPressed: busy ? null : () => _reason('skip', 'skip', 'Motivo de no visita'), child: const Text('No visitaré a este cliente')),
+      if (owedTotal > Dec.zero) ...[
+        const SizedBox(height: NrSpace.md),
+        NrCard(
+          accent: overdue > 0 ? nr.danger : nr.warning,
+          onTap: working && customerId != null && (session?.canCollect ?? false) ? collect : null,
+          child: Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('SALDO PENDIENTE', style: NrText.eyebrow(context)),
+                const SizedBox(height: 4),
+                NrAmount(owedTotal, size: 24, animate: true, color: overdue > 0 ? nr.danger : null),
+                const SizedBox(height: 2),
+                Text('${owed.length} ${owed.length == 1 ? 'documento' : 'documentos'}${overdue > 0 ? ' · $overdue vencido${overdue == 1 ? '' : 's'}' : ''}', style: NrText.caption(context)),
+              ]),
+            ),
+            if (working && customerId != null && (session?.canCollect ?? false))
+              NrButton(label: 'Cobrar', icon: Icons.payments_rounded, expand: false, height: NrTouch.min, onPressed: collect),
+          ]),
+        ),
       ],
-      if (inProgress || status == 'completed') ...[
+      if (working) ...[
         NrSectionHeader('¿Qué hiciste?'),
         GridView.count(
           crossAxisCount: 2,
@@ -288,62 +397,51 @@ class _VisitPageState extends ConsumerState<VisitPage> {
           physics: const NeverScrollableScrollPhysics(),
           mainAxisSpacing: NrSpace.md,
           crossAxisSpacing: NrSpace.md,
-          childAspectRatio: 1.7,
-          children: [
-            tile(Icons.point_of_sale, 'Venta', () => _cart(v, 'sale'), highlight: actions.contains('sale')),
-            tile(Icons.receipt_long_outlined, 'Pedido', () => _cart(v, 'order'), highlight: actions.contains('order')),
-            if (orders.isNotEmpty)
-              tile(Icons.local_shipping_outlined, 'Entrega', () async {
-                await Navigator.of(context).push(MaterialPageRoute(builder: (_) => DeliveryPage(visit: v)));
-                ref.invalidate(visitProvider(widget.visitId));
-              }, highlight: true, badge: '${orders.length}'),
-            tile(Icons.assignment_return_outlined, 'Recolección', () => _cart(v, 'pickup'), highlight: actions.contains('pickup')),
-            if (assets.isNotEmpty)
-              tile(Icons.kitchen_outlined, 'Mantenimiento', () async {
-                await Navigator.of(context).push(MaterialPageRoute(builder: (_) => AssetServicePage(visit: v)));
-                ref.invalidate(visitProvider(widget.visitId));
-              }, highlight: actions.contains('asset_service'), badge: assets.any((a) => a['service_due'] == true) ? 'Toca' : null),
-            if (customerId != null && (session?.canCollect ?? false))
-              tile(Icons.payments_outlined, 'Cobro', () async {
-                final tenders = asList(asMap(await ref.read(localDbProvider).getJson(RouteRepo.todayKey))['tenders']);
-                if (!context.mounted) return;
-                await Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => CollectionPage(
-                    customerId: customerId,
-                    customerName: '${customer['name']}',
-                    visitId: widget.visitId,
-                    tenderTypes: tenders.isEmpty ? null : tenders,
-                  ),
-                ));
-                ref.invalidate(visitProvider(widget.visitId));
-              }, highlight: actions.contains('collection') || owedTotal > Dec.zero, badge: owedTotal > Dec.zero ? money(owedTotal) : null),
-            tile(Icons.do_not_disturb_on_outlined, 'No venta', () => _reason('no_sale', 'no-sale', 'Motivo de no venta')),
-          ],
+          childAspectRatio: 1.45,
+          children: [for (final (i, t) in tiles.indexed) NrEntrance(index: i, child: t)],
+        ),
+      ] else if (status == 'pending') ...[
+        const SizedBox(height: NrSpace.lg),
+        NrCard(
+          depth: NrDepth.flat,
+          color: nr.accentSoft,
+          borderColor: Colors.transparent,
+          child: Row(children: [
+            Icon(Icons.info_outline_rounded, color: nr.night ? nr.link : nr.accent),
+            const SizedBox(width: NrSpace.md),
+            Expanded(child: Text('Registra tu llegada para vender, cobrar o levantar pedidos. Se guarda tu ubicación.', style: NrText.bodySm(context).copyWith(color: nr.body))),
+          ]),
         ),
       ],
-      if (inProgress) ...[
-        const SizedBox(height: NrSpace.lg),
-        FilledButton.icon(onPressed: busy ? null : _checkOut, icon: const Icon(Icons.logout), label: const Text('Terminar visita (salida)')),
-      ],
       if (asList(v['done']).isNotEmpty) ...[
-        NrSectionHeader('Hecho en esta visita'),
+        NrSectionHeader('Hecho en esta visita', count: asList(v['done']).length),
         NrGroup(children: [
           for (final d in asList(v['done']))
             NrListRow(
+              leading: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(color: nr.successBg, borderRadius: BorderRadius.circular(NrRadius.lg)),
+                child: Icon(Icons.check_rounded, color: nr.success, size: 20),
+              ),
               title: '${d['role_label'] ?? d['role']} ${d['folio'] ?? ''}',
               subtitle: [?d['type'] as String?, ?d['reason'] as String?].join(' · '),
-              trailing: NrMoney(d['total']),
+              trailing: d['total'] == null ? null : NrMoney(d['total'], weight: FontWeight.w700),
             ),
         ]),
       ],
-      if (owedTotal > Dec.zero) ...[
-        NrSectionHeader('Saldo pendiente'),
+      if (owed.isNotEmpty) ...[
+        NrSectionHeader('Documentos con saldo', count: owed.length),
         NrGroup(children: [
-          for (final d in asList(v['owed']))
+          for (final d in owed)
             NrListRow(
               title: '${d['type'] ?? ''} ${d['folio']}',
               subtitle: d['due_date'] == null ? null : 'Vence ${d['due_date']}',
-              trailing: NrMoney(d['balance'], color: d['overdue'] == true ? nr.danger : null),
+              trailing: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
+                NrMoney(d['balance'], weight: FontWeight.w700, color: d['overdue'] == true ? nr.danger : null),
+                const SizedBox(height: 4),
+                NrPill(d['overdue'] == true ? 'Vencido' : 'Por vencer', tone: d['overdue'] == true ? NrTone.danger : NrTone.neutral),
+              ]),
             ),
         ]),
       ],
@@ -353,53 +451,98 @@ class _VisitPageState extends ConsumerState<VisitPage> {
 
 /// Elige un motivo (y nota). Regresa (id, nota).
 Future<(int, String)?> pickReason(BuildContext context, List<Map<String, dynamic>> reasons, {required String title, bool notes = true}) {
-  return showModalBottomSheet<(int, String)>(
-    context: context,
-    isScrollControlled: true,
-    builder: (ctx) {
-      final note = TextEditingController();
-      int? selected;
-      return StatefulBuilder(
-        builder: (ctx, setState) => Padding(
-          padding: EdgeInsets.fromLTRB(NrSpace.xl, 0, NrSpace.xl, MediaQuery.of(ctx).viewInsets.bottom + NrSpace.xl),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text(title, style: NrText.title(ctx)),
-            const SizedBox(height: NrSpace.md),
-            if (reasons.isEmpty) const Text('No hay motivos configurados.'),
-            Wrap(spacing: NrSpace.sm, runSpacing: NrSpace.sm, children: [
+  final note = TextEditingController();
+  int? selected;
+  return showNrSheet<(int, String)>(
+    context,
+    title: title,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) {
+        final nr = ctx.nr;
+        return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (reasons.isEmpty) const NrEmpty(compact: true, icon: Icons.list_alt_rounded, title: 'Sin motivos', message: 'No hay motivos configurados en nori-web.'),
+          Flexible(
+            child: ListView(shrinkWrap: true, children: [
               for (final r in reasons)
-                ChoiceChip(label: Text('${r['name']}'), selected: selected == r['id'], onSelected: (_) => setState(() => selected = (r['id'] as num).toInt())),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: NrSpace.sm),
+                  child: NrCard(
+                    depth: NrDepth.flat,
+                    padding: const EdgeInsets.symmetric(horizontal: NrSpace.lg, vertical: NrSpace.md),
+                    color: selected == r['id'] ? nr.accentSoft : null,
+                    borderColor: selected == r['id'] ? nr.accent : null,
+                    onTap: () {
+                      NrHaptics.tap();
+                      setState(() => selected = (r['id'] as num).toInt());
+                    },
+                    child: Row(children: [
+                      Expanded(child: Text('${r['name']}', style: NrText.headline(ctx).copyWith(fontSize: 15))),
+                      AnimatedSwitcher(
+                        duration: NrMotion.fast,
+                        child: selected == r['id']
+                            ? Icon(Icons.check_circle_rounded, key: const ValueKey(1), color: nr.accent)
+                            : Icon(Icons.circle_outlined, key: const ValueKey(0), color: nr.borderStrong),
+                      ),
+                    ]),
+                  ),
+                ),
             ]),
-            if (notes) ...[
-              const SizedBox(height: NrSpace.md),
-              TextField(controller: note, decoration: const InputDecoration(labelText: 'Notas')),
-            ],
-            const SizedBox(height: NrSpace.lg),
-            FilledButton(onPressed: selected == null ? null : () => Navigator.pop(ctx, (selected!, note.text.trim())), child: const Text('Guardar')),
-          ]),
-        ),
-      );
-    },
+          ),
+          if (notes) ...[
+            const SizedBox(height: NrSpace.sm),
+            TextField(controller: note, decoration: const InputDecoration(labelText: 'Notas (opcional)')),
+          ],
+          const SizedBox(height: NrSpace.lg),
+          NrButton(label: 'Guardar', onPressed: selected == null ? null : () => Navigator.pop(ctx, (selected!, note.text.trim()))),
+        ]);
+      },
+    ),
   );
 }
 
 /// Confirmación con la opción de compartir el PDF del documento o imprimirlo.
-Future<void> showDoneDialog(BuildContext context, WidgetRef ref, String message, Map<String, dynamic> doc, {Ticket Function(TicketBrand)? print}) =>
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: Icon(Icons.check_circle, color: ctx.nr.success, size: 40),
-        title: Text(message),
-        content: doc['total'] == null ? null : Text('Total ${money(doc['total'])}'),
-        actions: [
-          if (print != null && ref.read(printerSettingsProvider).configured)
-            TextButton(onPressed: () => printTicket(ctx, ref, print), child: const Text('Imprimir')),
-          if (doc['id'] != null)
-            TextButton(
-              onPressed: () => shareDocument(ctx, ref, kind: 'document', id: (doc['id'] as num).toInt(), title: '${doc['folio'] ?? ''}'),
-              child: const Text('Enviar PDF'),
-            ),
-          FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Listo')),
-        ],
+Future<void> showDoneDialog(BuildContext context, WidgetRef ref, String message, Map<String, dynamic> doc, {Ticket Function(TicketBrand)? print, String? detail}) {
+  NrHaptics.success();
+  final canPrint = print != null && ref.read(printerSettingsProvider).configured;
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: false,
+    builder: (ctx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(NrSpace.xl, NrSpace.xl, NrSpace.xl, NrSpace.lg),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const Center(child: NrSuccessMark(size: 76)),
+          const SizedBox(height: NrSpace.sm),
+          Text(message, textAlign: TextAlign.center, style: NrText.title(ctx)),
+          if (doc['total'] != null) ...[
+            const SizedBox(height: NrSpace.md),
+            Center(child: NrAmount(doc['total'], size: 40, animate: true)),
+          ],
+          if (detail != null) ...[
+            const SizedBox(height: NrSpace.xs),
+            Text(detail, textAlign: TextAlign.center, style: NrText.bodySm(ctx)),
+          ],
+          const SizedBox(height: NrSpace.xxl),
+          if (canPrint || doc['id'] != null)
+            Row(children: [
+              if (canPrint)
+                Expanded(child: NrButton(label: 'Imprimir', icon: Icons.print_rounded, variant: NrButtonVariant.secondary, onPressed: () => printTicket(ctx, ref, print))),
+              if (canPrint && doc['id'] != null) const SizedBox(width: NrSpace.md),
+              if (doc['id'] != null)
+                Expanded(
+                  child: NrButton(
+                    label: 'Enviar PDF',
+                    icon: Icons.ios_share_rounded,
+                    variant: NrButtonVariant.secondary,
+                    onPressed: () => shareDocument(ctx, ref, kind: 'document', id: (doc['id'] as num).toInt(), title: '${doc['folio'] ?? ''}'),
+                  ),
+                ),
+            ]),
+          if (canPrint || doc['id'] != null) const SizedBox(height: NrSpace.md),
+          NrButton(label: 'Listo', onPressed: () => Navigator.pop(ctx)),
+        ]),
       ),
-    );
+    ),
+  );
+}

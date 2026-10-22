@@ -98,6 +98,9 @@ class Dec implements Comparable<Dec> {
   /// Número para el JSON de la API (los cuerpos piden `number`).
   num toJson([int places = 6]) => num.parse(toFixed(places));
 
+  /// Para dibujar (gráficas, animaciones); los cálculos siguen en [Dec].
+  double toDouble() => double.parse(toFixed(4));
+
   /// Cantidad sin ceros sobrantes ("2", "2.5").
   String toQty() {
     var s = toFixed(4);
@@ -115,4 +118,14 @@ final _money = NumberFormat.currency(locale: 'es_MX', symbol: r'$', decimalDigit
 String money(Object? value) {
   final d = Dec.parse(value).round(2);
   return _money.format(num.parse(d.toFixed(2)));
+}
+
+/// "$184.2 k" o "$2.5 M" para cifras en espacios cortos (debajo de 10 mil, completa).
+String moneyCompact(Object? value) {
+  final v = Dec.parse(value).toDouble();
+  final a = v.abs();
+  if (a < 10000) return money(value);
+  String f(double x) => x.toStringAsFixed(x >= 100 ? 0 : 1).replaceFirst(RegExp(r'\.0$'), '');
+  final body = a >= 1e6 ? '${f(a / 1e6)} M' : '${f(a / 1e3)} k';
+  return '${v < 0 ? '-' : ''}\$$body';
 }

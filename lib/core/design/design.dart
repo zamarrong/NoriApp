@@ -1,4 +1,8 @@
+export 'nr_charts.dart';
 export 'nr_components.dart';
+export 'nr_illustration.dart';
+export 'nr_motion.dart';
+export 'nr_page.dart';
 export 'nr_theme.dart';
 export 'nr_tokens.dart';
 export 'nr_typography.dart';

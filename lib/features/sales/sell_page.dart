@@ -15,6 +15,7 @@ import '../collections/tender_sheet.dart';
 import '../printing/printer.dart';
 import '../printing/templates.dart';
 import '../route/visit_page.dart' show showDoneDialog;
+import '../customers/customer_card.dart';
 import 'cart.dart';
 import 'cart_page.dart';
 import 'quick_capture.dart';
@@ -33,11 +34,11 @@ class SaleType {
 }
 
 const saleTypes = [
-  SaleType('quotation', 'Cotización', 'quotations.create', Icons.request_quote_outlined),
-  SaleType('sales_order', 'Pedido', 'sales_orders.create', Icons.receipt_long_outlined),
-  SaleType('delivery', 'Entrega', 'deliveries.create', Icons.local_shipping_outlined, collects: true),
-  SaleType('invoice', 'Factura', 'invoices.create', Icons.point_of_sale, collects: true),
-  SaleType('return', 'Devolución', 'returns.create', Icons.assignment_return_outlined),
+  SaleType('quotation', 'Cotización', 'quotations.create', Icons.request_quote_rounded),
+  SaleType('sales_order', 'Pedido', 'sales_orders.create', Icons.receipt_long_rounded),
+  SaleType('delivery', 'Entrega', 'deliveries.create', Icons.local_shipping_rounded, collects: true),
+  SaleType('invoice', 'Factura', 'invoices.create', Icons.receipt_rounded, collects: true),
+  SaleType('return', 'Devolución', 'returns.create', Icons.assignment_return_rounded),
 ];
 
 const documentTypeLabels = {
@@ -97,7 +98,8 @@ class _SellPageState extends ConsumerState<SellPage> {
     final exact = rows.where((r) => '${r['code']}'.toLowerCase() == code.trim().toLowerCase()).firstOrNull ?? (rows.length == 1 ? rows.first : null);
     if (!mounted) return;
     if (exact == null) {
-      showSnack(context, 'No se encontró el cliente $code');
+      NrHaptics.warning();
+      showSnack(context, 'No se encontró el cliente $code', tone: NrTone.danger);
     } else {
       await _choose(exact);
     }
@@ -107,23 +109,19 @@ class _SellPageState extends ConsumerState<SellPage> {
     final name = TextEditingController();
     final phone = TextEditingController();
     final rfc = TextEditingController();
-    final ok = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(NrSpace.xl, 0, NrSpace.xl, MediaQuery.of(ctx).viewInsets.bottom + NrSpace.xl),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Cliente nuevo', style: NrText.title(ctx)),
-          const SizedBox(height: NrSpace.lg),
-          TextField(controller: name, autofocus: true, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Nombre o razón social')),
-          const SizedBox(height: NrSpace.md),
-          TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Teléfono')),
-          const SizedBox(height: NrSpace.md),
-          TextField(controller: rfc, textCapitalization: TextCapitalization.characters, decoration: const InputDecoration(labelText: 'RFC (opcional)')),
-          const SizedBox(height: NrSpace.lg),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Dar de alta')),
-        ]),
-      ),
+    final ok = await showNrSheet<bool>(
+      context,
+      title: 'Cliente nuevo',
+      subtitle: 'Se da de alta en nori-web al guardar (necesita señal).',
+      builder: (ctx) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        TextField(controller: name, autofocus: true, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Nombre o razón social', prefixIcon: Icon(Icons.storefront_rounded))),
+        const SizedBox(height: NrSpace.md),
+        TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Teléfono', prefixIcon: Icon(Icons.call_rounded))),
+        const SizedBox(height: NrSpace.md),
+        TextField(controller: rfc, textCapitalization: TextCapitalization.characters, decoration: const InputDecoration(labelText: 'RFC (opcional)', prefixIcon: Icon(Icons.badge_outlined))),
+        const SizedBox(height: NrSpace.xl),
+        NrButton(label: 'Dar de alta', icon: Icons.person_add_alt_1_rounded, onPressed: () => Navigator.pop(ctx, true)),
+      ]),
     );
     if (ok != true || name.text.trim().isEmpty || !mounted) return;
     final op = OutboxOp.create('POST', '/customers',
@@ -160,68 +158,102 @@ class _SellPageState extends ConsumerState<SellPage> {
     final pending = ref.watch(pendingSaleItemsProvider);
     final nr = context.nr;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Vender'),
-        actions: [
-          if (session.canCheckPrices) IconButton(icon: const Icon(Icons.qr_code_2), tooltip: 'Checador de precios', onPressed: () => context.push('/checker')),
-          const SyncIndicator(),
-        ],
-      ),
-      body: ListView(padding: const EdgeInsets.all(NrSpace.gutter), children: [
+    return NrScrollPage(
+      eyebrow: 'Venta libre',
+      title: 'Vender',
+      subtitle: Text(customer == null ? 'Elige al cliente y luego el documento.' : '¿Qué le vas a hacer a ${_customerName.split(' ').first}?'),
+      actions: [
+        if (session.canCheckPrices) IconButton(icon: const Icon(Icons.qr_code_scanner_rounded), tooltip: 'Checador de precios', onPressed: () => context.push('/checker')),
+        const SyncIndicator(),
+      ],
+      children: [
         if (pending.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: NrSpace.md),
             child: NrCard(
-              borderColor: nr.accent,
-              padding: const EdgeInsets.symmetric(horizontal: NrSpace.lg, vertical: NrSpace.sm),
+              accent: nr.accent,
+              padding: const EdgeInsets.fromLTRB(NrSpace.lg, NrSpace.sm, NrSpace.sm, NrSpace.sm),
               child: Row(children: [
-                Icon(Icons.shopping_basket_outlined, color: nr.accent),
+                Icon(Icons.shopping_basket_rounded, color: nr.night ? nr.link : nr.accent),
                 const SizedBox(width: NrSpace.md),
-                Expanded(child: Text('${pending.length} ${pending.length == 1 ? 'artículo' : 'artículos'} del checador para la venta', style: NrText.body(context))),
+                Expanded(child: Text('${pending.length} ${pending.length == 1 ? 'artículo' : 'artículos'} del checador esperan en la venta', style: NrText.label(context))),
                 TextButton(onPressed: () => ref.read(pendingSaleItemsProvider.notifier).state = [], child: const Text('Quitar')),
               ]),
             ),
           ),
-        NrCard(
+        _StepLabel(number: 1, label: 'Cliente', done: customer != null),
+        NrSwitcher(
           child: customer == null
-              ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Text('CLIENTE', style: NrText.eyebrow(context)),
-                  const SizedBox(height: NrSpace.sm),
-                  FilledButton.icon(onPressed: () async => _choose(await pickCustomer(context)), icon: const Icon(Icons.search), label: const Text('Buscar cliente')),
-                  const SizedBox(height: NrSpace.sm),
-                  Row(children: [
-                    Expanded(child: OutlinedButton.icon(onPressed: _scanCustomer, icon: const Icon(Icons.qr_code_scanner), label: const Text('Escanear'))),
-                    const SizedBox(width: NrSpace.sm),
-                    Expanded(child: OutlinedButton.icon(onPressed: _newCustomer, icon: const Icon(Icons.person_add_alt), label: const Text('Nuevo'))),
-                  ]),
-                ])
-              : Row(children: [
-                  NrAvatar(_customerName),
-                  const SizedBox(width: NrSpace.md),
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(_customerName, style: NrText.headline(context)),
-                      Text('${customer!['code'] ?? ''}', style: NrText.caption(context)),
+              ? Column(key: const ValueKey('pick'), crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  NrCard(
+                    depth: NrDepth.floating,
+                    onTap: () async => _choose(await pickCustomer(context)),
+                    padding: const EdgeInsets.symmetric(horizontal: NrSpace.lg, vertical: NrSpace.lg),
+                    child: Row(children: [
+                      Icon(Icons.search_rounded, color: nr.muted),
+                      const SizedBox(width: NrSpace.md),
+                      Expanded(child: Text('Nombre, código, RFC o teléfono', style: NrText.body(context).copyWith(color: nr.muted))),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(color: nr.accentSoft, borderRadius: BorderRadius.circular(NrRadius.md)),
+                        child: Text('Buscar', style: NrText.label(context).copyWith(color: nr.night ? nr.link : nr.accent, fontWeight: FontWeight.w700)),
+                      ),
                     ]),
                   ),
-                  TextButton(onPressed: () => setState(() => customer = null), child: const Text('Cambiar')),
-                ]),
+                  const SizedBox(height: NrSpace.md),
+                  Row(children: [
+                    Expanded(child: NrButton(label: 'Escanear', icon: Icons.qr_code_scanner_rounded, variant: NrButtonVariant.secondary, height: NrTouch.min, onPressed: _scanCustomer)),
+                    const SizedBox(width: NrSpace.md),
+                    Expanded(child: NrButton(label: 'Cliente nuevo', icon: Icons.person_add_alt_1_rounded, variant: NrButtonVariant.secondary, height: NrTouch.min, onPressed: _newCustomer)),
+                  ]),
+                  if (recents.isNotEmpty) ...[
+                    const SizedBox(height: NrSpace.lg),
+                    Text('RECIENTES', style: NrText.eyebrow(context)),
+                    const SizedBox(height: NrSpace.sm),
+                    SizedBox(
+                      height: 104,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        clipBehavior: Clip.none,
+                        itemCount: recents.length,
+                        separatorBuilder: (_, _) => const SizedBox(width: NrSpace.sm),
+                        itemBuilder: (_, i) {
+                          final c = recents[i];
+                          final name = '${c['trade_name'] ?? c['name']}';
+                          return NrEntrance(
+                            index: i,
+                            child: SizedBox(
+                              width: 112,
+                              child: NrCard(
+                                padding: const EdgeInsets.all(NrSpace.md),
+                                onTap: () async {
+                                  final full = await ref.read(localDbProvider).find('customers', (c['id'] as num).toInt());
+                                  await _choose(full ?? c);
+                                },
+                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  NrAvatar(name, size: 36),
+                                  const Spacer(),
+                                  Text(name, style: NrText.label(context).copyWith(fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                ]),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ])
+              : CustomerCard(
+                  key: ValueKey(customer!['id']),
+                  customer: customer!,
+                  onChange: () => setState(() => customer = null),
+                  onTap: () => context.push('/customers/${customer!['id']}'),
+                ),
         ),
-        if (customer == null && recents.isNotEmpty) ...[
-          NrSectionHeader('Recientes'),
-          Wrap(spacing: NrSpace.sm, runSpacing: NrSpace.sm, children: [
-            for (final c in recents)
-              ActionChip(
-                avatar: NrAvatar('${c['trade_name'] ?? c['name']}', size: 24),
-                label: Text('${c['trade_name'] ?? c['name']}', overflow: TextOverflow.ellipsis),
-                onPressed: () => _choose(c),
-              ),
-          ]),
-        ],
-        NrSectionHeader('¿Qué vas a hacer?'),
+        const SizedBox(height: NrSpace.sm),
+        _StepLabel(number: 2, label: 'Documento', done: false),
         if (types.isEmpty)
-          const NrCard(child: Text('Tu usuario no tiene permiso para crear documentos de venta.'))
+          const NrCard(child: NrEmpty(compact: true, icon: Icons.lock_outline_rounded, title: 'Sin permiso', message: 'Tu usuario no puede crear documentos de venta.'))
         else
           GridView.count(
             crossAxisCount: 2,
@@ -229,18 +261,18 @@ class _SellPageState extends ConsumerState<SellPage> {
             physics: const NeverScrollableScrollPhysics(),
             mainAxisSpacing: NrSpace.md,
             crossAxisSpacing: NrSpace.md,
-            childAspectRatio: 1.7,
+            childAspectRatio: 1.45,
             children: [
-              for (final t in types)
-                NrCard(
-                  padding: const EdgeInsets.all(NrSpace.md),
-                  onTap: () => _start(t),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Icon(t.icon, color: nr.accent),
-                    const Spacer(),
-                    Text(t.label, style: NrText.headline(context)),
-                    if (t.collects && session.canCollect) Text('Con cobro', style: NrText.caption(context)),
-                  ]),
+              for (final (i, t) in types.indexed)
+                NrEntrance(
+                  index: i,
+                  child: NrTile(
+                    icon: t.icon,
+                    title: t.label,
+                    subtitle: t.collects && session.canCollect ? 'Con cobro' : saleTypeHints[t.type],
+                    color: saleTypeColor(t.type),
+                    onTap: () => _start(t),
+                  ),
                 ),
             ],
           ),
@@ -248,24 +280,80 @@ class _SellPageState extends ConsumerState<SellPage> {
         NrGroup(children: [
           if (session.canCheckPrices)
             NrListRow(
-              leading: const Icon(Icons.qr_code_2),
+              leading: _toolIcon(context, Icons.qr_code_scanner_rounded, NrColors.hues[1]),
               title: 'Checador de precios',
               subtitle: 'Precio, imagen y existencias al escanear',
-              trailing: const Icon(Icons.chevron_right),
+              trailing: const Icon(Icons.chevron_right_rounded),
               onTap: () => context.push('/checker'),
             ),
           NrListRow(
-            leading: const Icon(Icons.description_outlined),
+            leading: _toolIcon(context, Icons.receipt_long_rounded, NrColors.hues[2]),
             title: 'Mis documentos',
             subtitle: 'Estado y PDF para compartir',
-            trailing: const Icon(Icons.chevron_right),
+            trailing: const Icon(Icons.chevron_right_rounded),
             onTap: () => context.push('/documents'),
           ),
         ]),
+      ],
+    );
+  }
+}
+
+Widget _toolIcon(BuildContext context, IconData icon, Color c) => Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(color: context.nr.tint(c, 0.13), borderRadius: BorderRadius.circular(NrRadius.lg)),
+      child: Icon(icon, color: context.nr.tone(c), size: 20),
+    );
+
+/// Paso numerado del flujo de venta.
+class _StepLabel extends StatelessWidget {
+  const _StepLabel({required this.number, required this.label, required this.done});
+
+  final int number;
+  final String label;
+  final bool done;
+
+  @override
+  Widget build(BuildContext context) {
+    final nr = context.nr;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(NrSpace.xs, NrSpace.md, NrSpace.xs, NrSpace.sm),
+      child: Row(children: [
+        AnimatedContainer(
+          duration: NrMotion.base,
+          width: 22,
+          height: 22,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: done ? nr.success : nr.ink, shape: BoxShape.circle),
+          child: done
+              ? const Icon(Icons.check_rounded, size: 14, color: Colors.white)
+              : Text('$number', style: NrText.caption(context).copyWith(color: nr.onInk, fontWeight: FontWeight.w700)),
+        ),
+        const SizedBox(width: NrSpace.sm),
+        Text(label.toUpperCase(), style: NrText.eyebrow(context).copyWith(color: nr.headline)),
       ]),
     );
   }
 }
+
+/// Para qué sirve cada documento (debajo del nombre).
+const saleTypeHints = {
+  'quotation': 'Precio sin compromiso',
+  'sales_order': 'Para surtir después',
+  'delivery': 'Sale del almacén',
+  'invoice': 'Con CFDI',
+  'return': 'Producto de regreso',
+};
+
+Color saleTypeColor(String type) => switch (type) {
+      'quotation' => NrColors.hues[7],
+      'sales_order' => NrColors.hues[2],
+      'delivery' => NrColors.hues[5],
+      'invoice' => NrColors.hues[0],
+      'return' => NrColors.hues[4],
+      _ => NrColors.hues[1],
+    };
 
 /// Abre el carrito del tipo elegido para el cliente y lo guarda con el motor de
 /// documentos (cola sin señal, llave de idempotencia). Entrega y factura se
