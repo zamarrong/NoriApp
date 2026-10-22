@@ -1,6 +1,6 @@
 /// A qué servidor y empresa habla la app.
 ///
-/// - Código simple ("blanc") → `https://blanc.nori.mx` (dominio de la empresa).
+/// - Código simple ("miempresa") → `https://miempresa.nori.mx` (dominio de la empresa).
 /// - URL o dominio ("https://api.nori.mx", "192.168.1.5:8000") → esa base; si
 ///   además se da un código de empresa, va en `X-Tenant` (dominio central).
 class ServerConfig {
@@ -30,6 +30,12 @@ class ServerConfig {
     s = s.replaceFirst(RegExp(r'/api(/v1)?$'), '');
     final uri = Uri.tryParse(s);
     if (uri == null || uri.host.isEmpty) throw const FormatException('La dirección del servidor no es válida.');
+    // Local development as typed in the browser ("http://empresa.localhost:8000"): phones and
+    // simulators don't always resolve *.localhost, so it goes to 127.0.0.1 with the company code
+    final local = RegExp(r'^([a-z0-9-]+)\.localhost$').firstMatch(uri.host.toLowerCase());
+    if (local != null) {
+      return ServerConfig(baseUrl: uri.replace(host: '127.0.0.1').toString(), tenant: code.isEmpty ? local.group(1) : code);
+    }
     return ServerConfig(baseUrl: s, tenant: code.isEmpty ? null : code);
   }
 
@@ -37,6 +43,6 @@ class ServerConfig {
 
   factory ServerConfig.fromJson(Map<String, dynamic> j) => ServerConfig(baseUrl: '${j['base_url']}', tenant: j['tenant'] as String?);
 
-  /// Texto corto para la pantalla de inicio ("blanc.nori.mx").
+  /// Texto corto para la pantalla de inicio ("miempresa.nori.mx").
   String get label => tenant == null ? Uri.parse(baseUrl).host : '${Uri.parse(baseUrl).host} · $tenant';
 }

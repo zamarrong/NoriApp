@@ -22,15 +22,15 @@ void main() {
 
   group('ServerConfig', () {
     test('código simple usa el dominio de la empresa', () {
-      final c = ServerConfig.resolve('Blanc');
-      expect(c.baseUrl, 'https://blanc.nori.mx');
+      final c = ServerConfig.resolve('MiEmpresa');
+      expect(c.baseUrl, 'https://miempresa.nori.mx');
       expect(c.tenant, isNull);
     });
 
     test('dominio central con X-Tenant y limpia /api/v1', () {
-      final c = ServerConfig.resolve('api.nori.mx/api/v1/', tenantCode: 'blanc');
+      final c = ServerConfig.resolve('api.nori.mx/api/v1/', tenantCode: 'miempresa');
       expect(c.baseUrl, 'https://api.nori.mx');
-      expect(c.tenant, 'blanc');
+      expect(c.tenant, 'miempresa');
     });
 
     test('IP local usa http', () {
@@ -109,9 +109,9 @@ void main() {
       expect((await db.itemByCode('7500000000017'))?['id'], 5);
       expect((await db.search('items', 'roja')).length, 1);
 
-      await db.applySyncPage('items', deleted: [6], rows: [{'id': 5, 'code': 'ROSA', 'name': 'Rosa blanca', 'is_active': true}]);
+      await db.applySyncPage('items', deleted: [6], rows: [{'id': 5, 'code': 'ROSA', 'name': 'Rosa miempresaa', 'is_active': true}]);
       expect(await db.count('items'), 1);
-      expect((await db.find('items', 5))?['name'], 'Rosa blanca');
+      expect((await db.find('items', 5))?['name'], 'Rosa miempresaa');
 
       await db.applySyncPage('stock', deleted: [], rows: [{'id': 1, 'item_id': 5, 'warehouse_id': 3, 'on_hand': '15'}]);
       expect((await db.byRefs('stock', ref1: 5, ref2: 3)).single['on_hand'], '15');
@@ -131,5 +131,10 @@ void main() {
       await repo.save(a);
       expect(await repo.counts(), (1, 1));
     });
+    test('a company subdomain of localhost goes to 127.0.0.1 with its code', () {
+    final c = ServerConfig.resolve('http://miempresa.localhost:8000/');
+    expect(c.baseUrl, 'http://127.0.0.1:8000');
+    expect(c.tenant, 'miempresa');
   });
+});
 }

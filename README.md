@@ -31,10 +31,11 @@ En la pantalla de inicio, campo **Empresa o servidor**:
 
 | Escribes | Servidor | Encabezado |
 |---|---|---|
-| `blanc` | `https://blanc.nori.mx` | — (dominio de la empresa, recomendado) |
-| `blanc.nori.mx` o `https://blanc.nori.mx` | ese dominio | — |
-| `api.nori.mx` + *Opciones avanzadas → Código de empresa* `blanc` | `https://api.nori.mx` | `X-Tenant: blanc` (y `tenant` en el login) |
+| `miempresa` | `https://miempresa.nori.mx` | — (dominio de la empresa, recomendado) |
+| `miempresa.nori.mx` o `https://miempresa.nori.mx` | ese dominio | — |
+| `api.nori.mx` + *Opciones avanzadas → Código de empresa* `miempresa` | `https://api.nori.mx` | `X-Tenant: miempresa` (y `tenant` en el login) |
 | `192.168.1.10:8000` (desarrollo) | `http://192.168.1.10:8000` | opcional `X-Tenant` |
+| `http://miempresa.localhost:8000` (desarrollo local, como en el navegador) | `http://127.0.0.1:8000` | `X-Tenant: miempresa` |
 
 La lógica está en `lib/core/api/server_config.dart` (`ServerConfig.resolve`). El dominio raíz por omisión
 (`nori.mx`) está en `ServerConfig.defaultRootDomain`.

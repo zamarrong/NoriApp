@@ -76,7 +76,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 controller: server,
                 keyboardType: TextInputType.url,
                 autocorrect: false,
-                decoration: const InputDecoration(labelText: 'Empresa o servidor', hintText: 'blanc  ·  blanc.nori.mx', prefixIcon: Icon(Icons.business_outlined)),
+                decoration: const InputDecoration(labelText: 'Empresa o servidor', hintText: 'miempresa  ·  miempresa.nori.mx', prefixIcon: Icon(Icons.business_outlined)),
               ),
               Align(
                 alignment: Alignment.centerRight,
