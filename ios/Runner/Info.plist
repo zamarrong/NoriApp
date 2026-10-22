@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Development servers on the local network (http://127.0.0.1:8000, 192.168.x.x): production uses https -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Nori usa la cámara para escanear códigos de barras y tomar fotos de los equipos.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
