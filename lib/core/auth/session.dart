@@ -28,10 +28,9 @@ class Session {
   String get tenantName => '${tenant['name'] ?? server.label}';
 
   /// Color de acento de la empresa si el servidor lo manda (ajustes de
-  /// apariencia, `company.accent_color`). La API v1 aún no lo expone en el
-  /// contrato: se lee de `tenant.accent_color` o `tenant.appearance.accent_color`.
+  /// apariencia): llega en `company.accent_color` de la sesión.
   String? get accentColor =>
-      (tenant['accent_color'] ?? asMap(tenant['appearance'])['accent_color'] ?? asMap(context['appearance'])['accent_color']) as String?;
+      (asMap(tenant['company'])['accent_color'] ?? tenant['accent_color']) as String?;
 
   int? get warehouseId => (context['warehouse_id'] as num?)?.toInt();
   bool get mustChooseWarehouse => context['must_choose_warehouse'] == true;
@@ -73,7 +72,11 @@ class Session {
       user: asMap(data['user']),
       permissions: ((data['permissions'] as List?) ?? const []).map((e) => '$e').toSet(),
       context: asMap(data['working_context']),
-      tenant: data['tenant'] is Map ? asMap(data['tenant']) : (previous?.tenant ?? {}),
+      // The company's brand (session `company`) travels with the tenant data
+      tenant: {
+        ...(data['tenant'] is Map ? asMap(data['tenant']) : (previous?.tenant ?? {})),
+        if (data['company'] is Map) 'company': asMap(data['company']),
+      },
     );
   }
 
