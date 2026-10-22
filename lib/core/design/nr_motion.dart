@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart' show kTouchSlop;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -131,24 +133,24 @@ class NrEntrance extends StatefulWidget {
 class _NrEntranceState extends State<NrEntrance> with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 420));
   late final Animation<double> _t = CurvedAnimation(parent: _c, curve: NrMotion.emphasized);
-
-  @override
-  void initState() {
-    super.initState();
-    final delay = Duration(milliseconds: (widget.index.clamp(0, 9)) * 45);
-    Future<void>.delayed(delay, () {
-      if (mounted) _c.forward();
-    });
-  }
+  Timer? _start;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (nrReduceMotion(context)) _c.value = 1;
+    if (nrReduceMotion(context)) {
+      _start?.cancel();
+      _c.value = 1;
+    } else if (_c.isDismissed && _start == null) {
+      _start = Timer(Duration(milliseconds: (widget.index.clamp(0, 9)) * 45), () {
+        if (mounted) _c.forward();
+      });
+    }
   }
 
   @override
   void dispose() {
+    _start?.cancel();
     _c.dispose();
     super.dispose();
   }

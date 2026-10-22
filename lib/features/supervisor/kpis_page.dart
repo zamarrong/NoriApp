@@ -118,7 +118,7 @@ class KpisPage extends ConsumerWidget {
                 dot: dot,
                 inverse: inverse,
                 change: v['change_percent'] as num?,
-                caption: v['previous'] == null ? null : 'vs ${moneyCompact(v['previous'])}',
+                caption: v['previous'] == null ? null : 'vs ${v['format'] == 'money' ? moneyCompact(v['previous'], from: 1000) : formatKpi({...v, 'value': v['previous']})}',
                 spark: s == null ? null : NrSparkline(values: s, height: 28, color: dot, dot: false),
               );
             }
@@ -127,24 +127,28 @@ class KpisPage extends ConsumerWidget {
             return [
               if (month.isNotEmpty) NrEntrance(child: _HeroSales(month: month, spark: spark('sales_month'))),
               const SizedBox(height: NrSpace.md),
-              GridView.count(
-                crossAxisCount: MediaQuery.sizeOf(context).width > 600 ? 3 : 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: NrSpace.md,
-                crossAxisSpacing: NrSpace.md,
-                childAspectRatio: 1.25,
-                children: [
-                  for (final (i, w) in [
-                    tile('sales_today', 'Venta hoy', nr.accent),
-                    tile('collections_today', 'Cobrado hoy', nr.success),
-                    tile('collections_month', 'Cobrado mes', NrColors.hues[1]),
-                    tile('receivables', 'Cartera', NrColors.hues[2]),
-                    tile('overdue', 'Vencido', nr.danger, inverse: true),
-                  ].where((w) => w is! SizedBox).indexed)
-                    NrEntrance(index: i + 1, child: w),
-                ],
-              ),
+              Builder(builder: (context) {
+                final tiles = [
+                  tile('sales_today', 'Venta hoy', nr.accent),
+                  tile('collections_today', 'Cobrado hoy', nr.success),
+                  tile('collections_month', 'Cobrado mes', NrColors.hues[1]),
+                  tile('receivables', 'Cartera', NrColors.hues[2]),
+                  tile('overdue', 'Vencido', nr.danger, inverse: true),
+                ].where((w) => w is! SizedBox).toList();
+                return Column(children: [
+                  for (var r = 0; r < tiles.length; r += 2)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: NrSpace.md),
+                      child: IntrinsicHeight(
+                        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                          Expanded(child: NrEntrance(index: r + 1, child: tiles[r])),
+                          const SizedBox(width: NrSpace.md),
+                          Expanded(child: r + 1 < tiles.length ? NrEntrance(index: r + 2, child: tiles[r + 1]) : const SizedBox()),
+                        ]),
+                      ),
+                    ),
+                ]);
+              }),
               if (asList(k['aging']).any((r) => ((r['value'] as num?) ?? 0) > 0)) ...[
                 NrSectionHeader('Antigüedad de cartera'),
                 NrCard(

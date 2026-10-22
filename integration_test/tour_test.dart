@@ -149,10 +149,20 @@ void main() {
     }
     final router = container.read(routerProvider);
     final nav = router.routerDelegate.navigatorKey;
-    final customers = await db.search('customers', '', limit: 300);
+    final customers = await db.search('customers', '', limit: 5000);
     customers.sort((a, b) => (double.tryParse('${b['balance']}') ?? 0).compareTo(double.tryParse('${a['balance']}') ?? 0));
     final items = await db.search('items', '', limit: 6);
-    final customer = customers.first;
+    // El cliente de muestra: el primero con saldo en su cuenta (y crédito) según el servidor.
+    var customer = customers.first;
+    for (final c in customers.take(15)) {
+      try {
+        final account = asMap(asMap(unwrap(await container.read(apiProvider).get('/customers/${c['id']}')))['account']);
+        if ((double.tryParse('${account['balance']}') ?? 0) > 0 && (double.tryParse('${account['credit_limit']}') ?? 0) > 0) {
+          customer = c;
+          break;
+        }
+      } catch (_) {}
+    }
 
     Future<void> push(Widget page) async {
       nav.currentState!.push(MaterialPageRoute<void>(builder: (_) => page));
@@ -163,7 +173,8 @@ void main() {
 
     for (final theme in _themes.split(',')) {
       container.read(themeModeProvider.notifier).set(theme == 'dark' ? ThemeMode.dark : ThemeMode.light);
-      final t = theme == 'dark' ? 'd' : 'l';
+      container.read(highContrastProvider.notifier).set(theme == 'contrast');
+      final t = switch (theme) { 'dark' => 'd', 'contrast' => 'h', _ => 'l' };
 
       withRoute = true;
       router.go('/today');
@@ -284,6 +295,7 @@ void main() {
       await wait(400);
     }
     container.read(themeModeProvider.notifier).set(ThemeMode.system);
+    container.read(highContrastProvider.notifier).set(false);
     router.go('/today');
     await wait(500);
   }, timeout: const Timeout(Duration(minutes: 20)));

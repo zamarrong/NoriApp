@@ -449,9 +449,13 @@ class _QuickCapturePageState extends ConsumerState<QuickCapturePage> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(i.name, style: NrText.headline(context).copyWith(fontSize: 15), maxLines: 2, overflow: TextOverflow.ellipsis),
             const SizedBox(height: 3),
+            if (i.price != null) Text(money(i.price), style: NrText.money(context, size: 14, weight: FontWeight.w700).copyWith(color: nr.body)),
+            const SizedBox(height: 3),
             Row(children: [
-              if (i.price != null) Text(money(i.price), style: NrText.money(context, size: 13).copyWith(color: nr.body)),
-              if (i.price != null && i.onHand != null) const SizedBox(width: 6),
+              if ('${i.item['code'] ?? ''}'.isNotEmpty) ...[
+                Text('${i.item['code']}', style: NrText.caption(context).copyWith(fontSize: 11)),
+                const SizedBox(width: 6),
+              ],
               if (i.onHand != null)
                 Flexible(
                   child: NrPill(
@@ -460,7 +464,6 @@ class _QuickCapturePageState extends ConsumerState<QuickCapturePage> {
                   ),
                 ),
             ]),
-            if ('${i.item['code'] ?? ''}'.isNotEmpty) Text('${i.item['code']}${i.uom == null ? '' : ' · ${i.uom}'}', style: NrText.caption(context).copyWith(fontSize: 11)),
           ]),
         ),
         _padBtn(context, Icons.remove_rounded, q.isZero ? null : () => setState(() => _setQty(i.id, q - Dec.one))),
