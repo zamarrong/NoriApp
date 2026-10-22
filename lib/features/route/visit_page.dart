@@ -117,7 +117,7 @@ class _VisitPageState extends ConsumerState<VisitPage> {
         customerName: '${customer['name'] ?? ''}',
         submitLabel: kind == 'sale' ? 'Cobrar o dejar a crédito' : 'Guardar ${titles[kind]!.toLowerCase()}',
         initial: kind == 'sale' ? asList(visit['suggested']) : const [],
-        quote: (lines) async => asMap(await api.post('$_base/quote', body: {'kind': kind, 'lines': lines})),
+        quote: (lines, _) async => asMap(await api.post('$_base/quote', body: {'kind': kind, 'lines': lines})),
         onSubmit: (ctx, cart) async {
           final body = <String, dynamic>{'lines': cart.lines.map((l) => l.toApi()).toList()};
           if (kind == 'sale') {

@@ -1,11 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nori_mobile/core/api/api_error.dart';
 import 'package:nori_mobile/core/api/server_config.dart';
+import 'package:nori_mobile/core/auth/session.dart';
 import 'package:nori_mobile/core/db/local_db.dart';
 import 'package:nori_mobile/core/sync/outbox.dart';
 import 'package:nori_mobile/core/util/decimal.dart';
 import 'package:nori_mobile/features/collections/allocation.dart';
 import 'package:nori_mobile/features/sales/cart.dart';
+import 'package:nori_mobile/features/sales/sell_page.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
@@ -92,6 +94,24 @@ void main() {
     expect(t.total.toFixed(2), '37.50');
     expect(t.estimated, isTrue);
     expect(lines[1].error, isNotNull);
+  });
+
+  test('venta libre: unidad, línea base, descuento estimado y tipos según permisos', () {
+    final box = CartLine(item: {'id': 5, 'name': 'Rosa'}, quantity: Dec.parse('2'), uomId: 3);
+    final back = CartLine(item: {'id': 6, 'name': 'Tulipán'}, quantity: Dec.one, baseLineId: 90, maxQuantity: Dec.one);
+    expect(box.toApi(), {'item_id': 5, 'quantity': Dec.parse('2').toJson(4), 'uom_id': 3});
+    expect(back.toApi()['base_line_id'], 90);
+    final t = estimateOffline([box, back], {6: Dec.parse('10')}, byLine: {box: Dec.parse('120')}, discountPercent: Dec.parse('10'));
+    expect(t.subtotal.toFixed(2), '250.00');
+    expect(t.discount!.toFixed(2), '25.00');
+    expect(t.total.toFixed(2), '225.00');
+
+    final s = Session.fromApi({
+      'user': {'id': 1},
+      'permissions': ['sales_orders.create', 'invoices.create'],
+    }, server: const ServerConfig(baseUrl: 'https://miempresa.nori.mx'));
+    expect(allowedSaleTypes(s).map((t) => t.type), ['sales_order', 'invoice']);
+    expect(s.canFreeSell, isTrue);
   });
 
   group('LocalDb', () {

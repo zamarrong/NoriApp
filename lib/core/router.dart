@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/auth/auth_pages.dart';
+import '../features/checker/checker_page.dart';
 import '../features/customers/customers_page.dart';
 import '../features/inventory/count_page.dart';
 import '../features/inventory/inventory_page.dart';
@@ -10,6 +11,7 @@ import '../features/inventory/movement_page.dart';
 import '../features/more/more_page.dart';
 import '../features/route/route_today_page.dart';
 import '../features/route/visit_page.dart';
+import '../features/sales/sell_page.dart';
 import '../features/supervisor/approvals.dart';
 import '../features/supervisor/kpis_page.dart';
 import 'auth/session.dart';
@@ -26,6 +28,7 @@ class NavTab {
 /// Pestañas según permisos: lo que no se puede, no se ve (el servidor igual verifica).
 List<NavTab> tabsFor(Session s) => [
       if (s.canRoute) const NavTab('/today', 'Hoy', Icons.route_outlined, Icons.route),
+      if (s.canFreeSell) const NavTab('/sell', 'Vender', Icons.point_of_sale_outlined, Icons.point_of_sale),
       if (s.canCustomers) const NavTab('/customers', 'Clientes', Icons.people_outline, Icons.people),
       if (s.canInventory) const NavTab('/inventory', 'Inventario', Icons.inventory_2_outlined, Icons.inventory_2),
       if (s.canKpis) const NavTab('/supervisor', 'Indicadores', Icons.insights_outlined, Icons.insights),
@@ -67,6 +70,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state, child) => MainShell(location: state.matchedLocation, child: child),
         routes: [
           GoRoute(path: '/today', pageBuilder: (_, _) => const NoTransitionPage(child: RouteTodayPage())),
+          GoRoute(path: '/sell', pageBuilder: (_, _) => const NoTransitionPage(child: SellPage())),
           GoRoute(path: '/customers', pageBuilder: (_, _) => const NoTransitionPage(child: CustomersPage())),
           GoRoute(path: '/inventory', pageBuilder: (_, _) => const NoTransitionPage(child: InventoryPage())),
           GoRoute(path: '/supervisor', pageBuilder: (_, _) => const NoTransitionPage(child: KpisPage())),
@@ -81,7 +85,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/authorizations', builder: (_, _) => const AuthorizationsPage()),
       GoRoute(path: '/authorizations/mine', builder: (_, _) => const MyAuthorizationsPage()),
       GoRoute(path: '/sync', builder: (_, _) => const SyncPage()),
-      GoRoute(path: '/documents', builder: (_, _) => const DocumentsPage()),
+      GoRoute(path: '/documents', builder: (_, _) => const MyDocumentsPage()),
+      GoRoute(path: '/checker', builder: (_, _) => const CheckerPage()),
     ],
   );
 });

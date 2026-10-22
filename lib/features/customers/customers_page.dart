@@ -5,14 +5,11 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/api/api_error.dart';
-import '../../core/authorizations/authorization_flow.dart';
 import '../../core/design/design.dart';
 import '../../core/providers.dart';
-import '../../core/sync/outbox.dart';
 import '../../core/widgets/sync_indicator.dart';
 import '../collections/collection_page.dart';
-import '../route/visit_page.dart' show showDoneDialog;
-import '../sales/cart_page.dart';
+import '../sales/sell_page.dart';
 
 final _customerSearchProvider = StateProvider.autoDispose<String>((ref) => '');
 
@@ -82,37 +79,6 @@ final customerDetailProvider = FutureProvider.autoDispose.family<(Map<String, dy
   }
 });
 
-/// Abre el carrito para una cotización o pedido y lo guarda con el motor de documentos.
-Future<void> newSalesDocument(BuildContext context, WidgetRef ref, Map<String, dynamic> customer, String type) async {
-  final api = ref.read(apiProvider);
-  final id = (customer['id'] as num).toInt();
-  final label = type == 'quotation' ? 'Cotización' : 'Pedido';
-  await Navigator.of(context).push(MaterialPageRoute(
-    builder: (_) => CartPage(
-      title: label,
-      customerName: '${customer['trade_name'] ?? customer['name']}',
-      submitLabel: 'Guardar ${label.toLowerCase()}',
-      priceListId: (customer['price_list_id'] as num?)?.toInt(),
-      quote: (lines) async =>
-          asMap(unwrap(await api.post('/pricing/recalculate', body: {'document_type': type, 'partner_id': id, 'lines': lines}))),
-      onSubmit: (ctx, cart) async {
-        final op = OutboxOp.create('POST', '/documents',
-            body: {'type': type, 'business_partner_id': id, 'lines': cart.lines.map((l) => l.toApi()).toList()},
-            label: '$label ${customer['name']}');
-        final r = await sendWithAuthorization(ctx, ref, op);
-        if (r == null || !ctx.mounted) return false;
-        if (r.queued) {
-          showSnack(ctx, '$label guardada sin señal; se enviará sola.');
-        } else {
-          final doc = asMap(unwrap(r.response));
-          await showDoneDialog(ctx, ref, '$label ${doc['folio'] ?? ''}', doc);
-        }
-        return true;
-      },
-    ),
-  ));
-}
-
 class CustomerPage extends ConsumerWidget {
   const CustomerPage({super.key, required this.customerId});
 
@@ -177,10 +143,8 @@ class CustomerPage extends ConsumerWidget {
               ],
               NrSectionHeader('Acciones'),
               Wrap(spacing: NrSpace.sm, runSpacing: NrSpace.sm, children: [
-                if (session?.can('sales_orders.create') ?? false)
-                  FilledButton.icon(onPressed: () => newSalesDocument(context, ref, c, 'sales_order'), icon: const Icon(Icons.receipt_long), label: const Text('Pedido')),
-                if (session?.can('quotations.create') ?? false)
-                  OutlinedButton.icon(onPressed: () => newSalesDocument(context, ref, c, 'quotation'), icon: const Icon(Icons.request_quote_outlined), label: const Text('Cotización')),
+                for (final t in session == null ? const <SaleType>[] : allowedSaleTypes(session))
+                  OutlinedButton.icon(onPressed: () => startSaleDocument(context, ref, c, t), icon: Icon(t.icon), label: Text(t.label)),
                 if (session?.canCollect ?? false)
                   OutlinedButton.icon(
                     onPressed: () async {

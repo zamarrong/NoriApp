@@ -24,7 +24,10 @@ class InventoryPage extends ConsumerWidget {
       if (s.canAny(['inventory_counts.update', 'inventory_counts.view'])) (Icons.fact_check_outlined, 'Conteo físico', 'Unirse a un conteo y escanear', '/inventory/counts'),
     ];
     return Scaffold(
-      appBar: AppBar(title: const Text('Inventario'), actions: const [SyncIndicator()]),
+      appBar: AppBar(title: const Text('Inventario'), actions: [
+        IconButton(icon: const Icon(Icons.qr_code_2), tooltip: 'Checador de precios', onPressed: () => context.push('/checker')),
+        const SyncIndicator(),
+      ]),
       body: ListView(padding: const EdgeInsets.all(NrSpace.gutter), children: [
         NrCard(
           onTap: () => context.push('/warehouse'),

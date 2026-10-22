@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 import '../../core/api/api_client.dart';
 import '../../core/authorizations/authorization_flow.dart';
 import '../../core/design/design.dart';
+import '../../core/providers.dart';
 import '../../core/sync/outbox.dart';
 import '../../core/widgets/sync_indicator.dart';
 import 'route_repo.dart';
@@ -39,7 +40,7 @@ class RouteTodayPage extends ConsumerWidget {
           data: (c) {
             final plans = asList(c.value['plans']);
             if (plans.isEmpty) {
-              return const NrEmpty(icon: Icons.route_outlined, title: 'Sin ruta hoy', message: 'No tienes una ruta planeada para hoy.');
+              return const _NoRouteToday();
             }
             final plan = plans.first;
             final stops = asList(plan['stops'])..sort((a, b) => ((a['sequence'] as num?) ?? 0).compareTo((b['sequence'] as num?) ?? 0));
@@ -62,6 +63,42 @@ class RouteTodayPage extends ConsumerWidget {
           },
         ),
       ),
+    );
+  }
+}
+
+/// Sin ruta hoy: lo de la venta libre en lugar de una lista vacía.
+class _NoRouteToday extends ConsumerWidget {
+  const _NoRouteToday();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(sessionProvider);
+    final canSell = s?.canFreeSell ?? false;
+    final canCheck = s?.canCheckPrices ?? false;
+    return RefreshIndicator(
+      onRefresh: () async => ref.invalidate(routeTodayProvider),
+      child: ListView(padding: const EdgeInsets.all(NrSpace.gutter), children: [
+        NrCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('Sin ruta hoy', style: NrText.title(context)),
+            const SizedBox(height: NrSpace.xs),
+            Text(canSell ? 'Puedes vender sin ruta: elige al cliente y el documento.' : 'No tienes una ruta planeada para hoy.', style: NrText.bodySm(context)),
+            if (canSell) ...[
+              const SizedBox(height: NrSpace.lg),
+              FilledButton.icon(onPressed: () => context.go('/sell'), icon: const Icon(Icons.point_of_sale), label: const Text('Vender')),
+            ],
+            if (canCheck) ...[
+              const SizedBox(height: NrSpace.sm),
+              OutlinedButton.icon(onPressed: () => context.push('/checker'), icon: const Icon(Icons.qr_code_2), label: const Text('Checador de precios')),
+            ],
+            if (canSell) ...[
+              const SizedBox(height: NrSpace.sm),
+              OutlinedButton.icon(onPressed: () => context.push('/documents'), icon: const Icon(Icons.description_outlined), label: const Text('Mis documentos')),
+            ],
+          ]),
+        ),
+      ]),
     );
   }
 }

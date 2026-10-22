@@ -3,14 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import '../../core/api/api_client.dart';
 import '../../core/api/api_error.dart';
 import '../../core/authorizations/authorization_flow.dart';
 import '../../core/design/design.dart';
 import '../../core/providers.dart';
 import '../../core/sync/outbox.dart';
 import '../../core/sync/sync_engine.dart';
-import '../../core/widgets/pickers.dart';
 import '../../core/widgets/sync_indicator.dart';
 
 class MorePage extends ConsumerWidget {
@@ -40,7 +38,8 @@ class MorePage extends ConsumerWidget {
         NrSectionHeader('Trabajo'),
         NrGroup(children: [
           NrListRow(leading: const Icon(Icons.sync), title: 'Sincronización', subtitle: 'Cola, errores y catálogos', trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/sync')),
-          if (s.canSell) NrListRow(leading: const Icon(Icons.description_outlined), title: 'Mis documentos', trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/documents')),
+          if (s.canCheckPrices) NrListRow(leading: const Icon(Icons.qr_code_2), title: 'Checador de precios', trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/checker')),
+          if (s.canFreeSell || s.canSell) NrListRow(leading: const Icon(Icons.description_outlined), title: 'Mis documentos', trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/documents')),
           NrListRow(leading: const Icon(Icons.history), title: 'Mis solicitudes de autorización', trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/authorizations/mine')),
           NrListRow(leading: const Icon(Icons.warehouse_outlined), title: 'Almacén de trabajo', subtitle: s.warehouseName, trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/warehouse')),
         ]),
@@ -213,40 +212,6 @@ class _OpRow extends ConsumerWidget {
                   ]),
                 ),
               ),
-    );
-  }
-}
-
-/// Documentos del vendedor (con PDF para compartir).
-class DocumentsPage extends ConsumerWidget {
-  const DocumentsPage({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Mis documentos')),
-      body: FutureBuilder(
-        future: ref.read(apiProvider).get('/documents', query: {'mine': 1, 'per_page': 50}),
-        builder: (context, snap) {
-          if (snap.hasError) return NrErrorView(snap.error!);
-          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-          final rows = asList(asMap(snap.data)['data']);
-          if (rows.isEmpty) return const NrEmpty(icon: Icons.description_outlined, title: 'Sin documentos');
-          return ListView.separated(
-            itemCount: rows.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (_, i) {
-              final d = rows[i];
-              return NrListRow(
-                title: '${d['folio']} · ${d['partner_name'] ?? ''}',
-                subtitle: '${d['type']} · ${d['document_date']} · ${d['status']}',
-                trailing: NrMoney(d['total']),
-                onTap: () => shareDocument(context, ref, kind: 'document', id: (d['id'] as num).toInt(), title: '${d['folio']}'),
-              );
-            },
-          );
-        },
-      ),
     );
   }
 }

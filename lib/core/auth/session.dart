@@ -53,6 +53,11 @@ class Session {
   bool get canRoute => can('route_execution.use');
   bool get canCustomers => canAny(['business_partners.view', 'sales_orders.create', 'quotations.create', 'incoming_payments.create']);
   bool get canSell => canAny(['sales_orders.create', 'quotations.create']);
+
+  /// Venta libre (sin ruta): cualquier documento de venta que pueda crear.
+  static const sellPermissions = ['quotations.create', 'sales_orders.create', 'deliveries.create', 'invoices.create', 'returns.create'];
+  bool get canFreeSell => canAny(sellPermissions);
+  bool get canCheckPrices => can('items.view') || canFreeSell;
   bool get canCollect => can('incoming_payments.create');
   bool get canInventory => canAny([
         'transfer_requests.create', 'transfer_requests.view', 'inventory_transfers.create',

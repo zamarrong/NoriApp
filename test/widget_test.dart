@@ -17,7 +17,9 @@ Session _session(List<String> permissions) => Session.fromApi(
 void main() {
   test('las pestañas siguen a los permisos', () {
     final seller = tabsFor(_session(['route_execution.use', 'sales_orders.create']));
-    expect(seller.map((t) => t.path), ['/today', '/customers', '/supervisor', '/more']);
+    expect(seller.map((t) => t.path), ['/today', '/sell', '/customers', '/supervisor', '/more']);
+    final counter = tabsFor(_session(['invoices.create']));
+    expect(counter.map((t) => t.path).first, '/sell');
     final picker = tabsFor(_session(['inventory_counts.update']));
     expect(picker.map((t) => t.path), ['/inventory', '/more']);
   });

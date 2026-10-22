@@ -9,7 +9,7 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Nori usa la cámara para escanear códigos de barras y tomar fotos de los equipos.</string>
+	<string>Nori usa la cámara para escanear códigos de barras (checador de precios y venta) y tomar fotos de los equipos.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Nori registra tu ubicación al llegar y salir de cada visita.</string>
 	<key>NSFaceIDUsageDescription</key>
