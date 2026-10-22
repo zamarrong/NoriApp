@@ -142,7 +142,8 @@ class AuthController extends Notifier<AuthState> {
     final s = state.session;
     if (s == null) return;
     try {
-      final api = ref.read(apiProvider);
+      // Cliente propio: leer apiProvider desde aquí sería una dependencia circular (api → sesión → auth).
+      final api = ApiClient(config: s.server, token: s.token, onUnauthenticated: expired);
       if (s.needsRefresh) {
         final r = await api.post('/auth/refresh');
         final next = Session.fromApi(asMap(unwrap(r)), server: s.server, previous: s);
@@ -234,7 +235,8 @@ final autoSyncProvider = Provider<void>((ref) {
   final engine = ref.watch(syncEngineProvider);
   final signedIn = ref.watch(authProvider.select((s) => s.status == AuthStatus.signedIn));
   if (engine == null || !signedIn) return;
-  unawaited(engine.syncNow());
+  // Después de construir: el motor cambia el estado de sincronización.
+  final first = Timer(Duration.zero, () => unawaited(engine.syncNow()));
   final timer = Timer.periodic(const Duration(minutes: 3), (_) => engine.syncNow());
   StreamSubscription<List<ConnectivityResult>>? sub;
   try {
@@ -245,6 +247,7 @@ final autoSyncProvider = Provider<void>((ref) {
     });
   } catch (_) {}
   ref.onDispose(() {
+    first.cancel();
     timer.cancel();
     sub?.cancel();
   });
