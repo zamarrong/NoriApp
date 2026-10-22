@@ -5,22 +5,13 @@ import 'package:go_router/go_router.dart';
 import '../../core/api/api_error.dart';
 import '../../core/design/design.dart';
 import '../../core/providers.dart';
+import '../../core/widgets/nori_logo.dart';
 
 class _Brand extends StatelessWidget {
   const _Brand();
 
   @override
-  Widget build(BuildContext context) => Row(children: [
-        Container(
-          width: 40,
-          height: 40,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(color: context.nr.ink, borderRadius: BorderRadius.circular(NrRadius.xl)),
-          child: Text('n', style: NrText.title(context).copyWith(color: context.nr.onInk)),
-        ),
-        const SizedBox(width: NrSpace.md),
-        Text('Nori', style: NrText.display(context)),
-      ]);
+  Widget build(BuildContext context) => const Align(alignment: Alignment.centerLeft, child: NoriLogo(height: 44));
 }
 
 /// Inicio de sesión: empresa (código o servidor), usuario y contraseña. El

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-4 -60 360.0 164" role="img" aria-label="Nori">
+  <title>Nori</title>
+  <path fill="#1A1A1A" fill-rule="evenodd" d="M0,100 V50 A50,50 0 0 1 100,50 V100 H72 V50 A22,22 0 0 0 28,50 V100 Z M114,50 A50,50 0 1 1 214,50 A50,50 0 1 1 114,50 Z M142,50 A22,22 0 1 0 186,50 A22,22 0 1 0 142,50 Z M228,100 V50 A50,50 0 0 1 278,0 H294 V28 H278 A22,22 0 0 0 256,50 V100 Z M306,0 H334 V100 H306 Z"/>
+  <g fill="#2563EB"><rect x="301.0" y="-29.0" width="36.0" height="15.0"/><circle cx="301.0" cy="-27.0" r="13.0"/><circle cx="319.0" cy="-37.0" r="19.0"/><circle cx="337.0" cy="-29.0" r="15.0"/></g>
+</svg>
