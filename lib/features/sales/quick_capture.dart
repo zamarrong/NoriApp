@@ -455,7 +455,7 @@ class _QuickCapturePageState extends ConsumerState<QuickCapturePage> {
               if (i.onHand != null)
                 Flexible(
                   child: NrPill(
-                    '${i.onHand!.toQty()} ${source == QuickSource.truck ? 'en camión' : 'disp.'}',
+                    i.onHand! <= Dec.zero ? 'Sin existencia' : '${i.onHand!.toQty()} ${source == QuickSource.truck ? 'en camión' : 'disp.'}',
                     tone: over ? NrTone.danger : (low ? NrTone.warning : (i.onHand! <= Dec.zero ? NrTone.danger : NrTone.neutral)),
                   ),
                 ),

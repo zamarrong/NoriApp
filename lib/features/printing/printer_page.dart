@@ -99,9 +99,16 @@ class _PrinterPageState extends ConsumerState<PrinterPage> {
       appBar: AppBar(title: const Text('Impresora')),
       body: ListView(padding: const EdgeInsets.all(NrSpace.gutter), children: [
         NrCard(
+          depth: NrDepth.floating,
+          radius: NrRadius.hero,
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Row(children: [
-              Icon(Icons.print_outlined, color: context.nr.accent),
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(color: s.configured ? context.nr.successBg : context.nr.accentSoft, borderRadius: BorderRadius.circular(NrRadius.xl)),
+                child: Icon(s.configured ? Icons.print_rounded : Icons.print_disabled_outlined, color: s.configured ? context.nr.success : context.nr.accent),
+              ),
               const SizedBox(width: NrSpace.md),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -117,15 +124,17 @@ class _PrinterPageState extends ConsumerState<PrinterPage> {
             ]),
             if (s.configured) ...[
               const SizedBox(height: NrSpace.md),
-              FilledButton.icon(onPressed: testing ? null : _test, icon: const Icon(Icons.receipt_outlined), label: const Text('Imprimir prueba')),
+              NrButton(label: 'Imprimir prueba', icon: Icons.receipt_long_rounded, busy: testing, onPressed: _test),
             ],
           ]),
         ),
         NrSectionHeader('Buscar'),
-        OutlinedButton.icon(
+        NrButton(
+          variant: NrButtonVariant.secondary,
           onPressed: scanning ? null : _scan,
-          icon: scanning ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.bluetooth_searching),
-          label: Text(scanning ? 'Buscando…' : 'Buscar impresoras'),
+          busy: scanning,
+          icon: Icons.bluetooth_searching_rounded,
+          label: scanning ? 'Buscando…' : 'Buscar impresoras',
         ),
         const SizedBox(height: NrSpace.sm),
         Text(
@@ -142,7 +151,7 @@ class _PrinterPageState extends ConsumerState<PrinterPage> {
                 leading: Icon(p.transport == 'classic' ? Icons.bluetooth : Icons.bluetooth_audio),
                 title: p.name,
                 subtitle: '${p.transport == 'classic' ? 'Clásico (emparejada)' : 'BLE'} · ${p.id}',
-                trailing: s.id == p.id ? const Icon(Icons.check) : null,
+                trailing: s.id == p.id ? Icon(Icons.check_circle_rounded, color: context.nr.success) : null,
                 onTap: () {
                   _set(s.copyWith(id: p.id, name: p.name, transport: p.transport));
                   showSnack(context, 'Impresora ${p.name} elegida.');
@@ -151,13 +160,10 @@ class _PrinterPageState extends ConsumerState<PrinterPage> {
           ]),
         ],
         NrSectionHeader('Papel y formato'),
-        SegmentedButton<int>(
-          segments: const [ButtonSegment(value: 58, label: Text('58 mm')), ButtonSegment(value: 80, label: Text('80 mm'))],
-          selected: {s.paperMm},
-          onSelectionChanged: (v) => _set(s.copyWith(paperMm: v.first)),
-        ),
+        NrSegmented<int>(values: const [58, 80], labels: const ['58 mm', '80 mm'], selected: s.paperMm, onChanged: (v) => _set(s.copyWith(paperMm: v))),
         const SizedBox(height: NrSpace.md),
         DropdownButtonFormField<TicketCharset>(
+          isExpanded: true,
           initialValue: s.charset,
           decoration: const InputDecoration(labelText: 'Acentos y ñ'),
           items: const [
@@ -170,6 +176,7 @@ class _PrinterPageState extends ConsumerState<PrinterPage> {
         ),
         const SizedBox(height: NrSpace.md),
         DropdownButtonFormField<String>(
+          isExpanded: true,
           initialValue: s.code,
           decoration: const InputDecoration(labelText: 'Código del folio'),
           items: const [
@@ -193,9 +200,13 @@ class _PrinterPageState extends ConsumerState<PrinterPage> {
         ),
         Row(children: [
           Expanded(child: Text('Copias', style: NrText.body(context))),
-          IconButton(icon: const Icon(Icons.remove_circle_outline), onPressed: s.copies <= 1 ? null : () => _set(s.copyWith(copies: s.copies - 1))),
-          Text('${s.copies}', style: NrText.money(context, size: 17)),
-          IconButton(icon: const Icon(Icons.add_circle_outline), onPressed: s.copies >= 5 ? null : () => _set(s.copyWith(copies: s.copies + 1))),
+          NrStepper(
+            compact: true,
+            value: Dec.parse(s.copies),
+            max: Dec.parse(5),
+            min: Dec.one,
+            onChanged: (v) => _set(s.copyWith(copies: v.toDouble().round().clamp(1, 5))),
+          ),
         ]),
         NrSectionHeader('Imprimir al guardar'),
         NrGroup(children: [

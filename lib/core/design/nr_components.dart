@@ -237,7 +237,7 @@ class NrMoney extends StatelessWidget {
 
 /// Ficha de KPI: rótulo con punto, cifra que cuenta, variación y tendencia.
 class NrMetric extends StatelessWidget {
-  const NrMetric({super.key, required this.label, required this.value, this.change, this.caption, this.amount, this.dot, this.spark, this.onTap});
+  const NrMetric({super.key, required this.label, required this.value, this.change, this.caption, this.amount, this.dot, this.spark, this.onTap, this.inverse = false});
 
   final String label;
 
@@ -251,6 +251,9 @@ class NrMetric extends StatelessWidget {
   final Color? dot;
   final Widget? spark;
   final VoidCallback? onTap;
+
+  /// Bajar es bueno (vencido).
+  final bool inverse;
 
   @override
   Widget build(BuildContext context) {
@@ -271,7 +274,7 @@ class NrMetric extends StatelessWidget {
         if (change != null || caption != null) ...[
           const SizedBox(height: 6),
           Row(children: [
-            if (change != null) NrDelta(change!),
+            if (change != null) NrDelta(change!, inverse: inverse),
             if (caption != null) ...[const SizedBox(width: 6), Flexible(child: Text(caption!, style: NrText.caption(context), maxLines: 1, overflow: TextOverflow.ellipsis))],
           ]),
         ],
@@ -987,11 +990,14 @@ class NrSegmented<T> extends StatelessWidget {
 
 /// Paso de cantidad: − cantidad +, con objetivos grandes.
 class NrStepper extends StatelessWidget {
-  const NrStepper({super.key, required this.value, required this.onChanged, this.max, this.onTapValue, this.compact = false});
+  const NrStepper({super.key, required this.value, required this.onChanged, this.max, this.min, this.onTapValue, this.compact = false});
 
   final Dec value;
   final ValueChanged<Dec> onChanged;
   final Dec? max;
+
+  /// Con mínimo, no se puede quitar (sin bote de basura).
+  final Dec? min;
   final VoidCallback? onTapValue;
   final bool compact;
 
@@ -1018,7 +1024,7 @@ class NrStepper extends StatelessWidget {
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(color: active ? nr.accentSoft : (nr.night ? nr.raised : nr.sunken), borderRadius: BorderRadius.circular(NrRadius.lg + 3)),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        btn(value <= Dec.one ? Icons.delete_outline_rounded : Icons.remove_rounded, value.isZero ? null : () => onChanged(value - Dec.one)),
+        btn(min == null && value <= Dec.one ? Icons.delete_outline_rounded : Icons.remove_rounded, value.isZero || (min != null && value <= min!) ? null : () => onChanged(value - Dec.one)),
         GestureDetector(
           onTap: onTapValue,
           behavior: HitTestBehavior.opaque,

@@ -6,7 +6,8 @@ import '../../core/design/design.dart';
 import '../../core/providers.dart';
 import '../../core/widgets/sync_indicator.dart';
 
-/// Terminal de inventario: traslados, ajustes y conteos según permisos.
+/// Terminal de inventario: traslados, ajustes y conteos según permisos, con
+/// el almacén de trabajo a la vista.
 class InventoryPage extends ConsumerWidget {
   const InventoryPage({super.key});
 
@@ -14,47 +15,61 @@ class InventoryPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(sessionProvider);
     if (s == null) return const SizedBox.shrink();
-    final tiles = <(IconData, String, String, String)>[
-      if (s.can('transfer_requests.create')) (Icons.move_down, 'Solicitud de traslado', 'Pedir mercancía a otro almacén', '/inventory/movement/transfer-requests'),
+    final nr = context.nr;
+    final tiles = <(IconData, String, String, String, Color)>[
+      if (s.can('transfer_requests.create')) (Icons.move_down_rounded, 'Solicitar', 'Pedir a otro almacén', '/inventory/movement/transfer-requests', NrColors.hues[0]),
       if (s.can('inventory_transfers.create') && s.can('transfer_requests.view'))
-        (Icons.playlist_add_check, 'Surtir solicitud', 'Traslado desde una solicitud, escaneando', '/inventory/requests'),
-      if (s.can('inventory_transfers.create')) (Icons.swap_horiz, 'Traslado', 'Mover mercancía entre almacenes', '/inventory/movement/transfers'),
-      if (s.can('goods_receipts.create')) (Icons.add_box_outlined, 'Entrada', 'Ajuste de entrada con causalidad', '/inventory/movement/goods-receipts'),
-      if (s.can('goods_issues.create')) (Icons.indeterminate_check_box_outlined, 'Salida', 'Ajuste de salida con causalidad', '/inventory/movement/goods-issues'),
-      if (s.canAny(['inventory_counts.update', 'inventory_counts.view'])) (Icons.fact_check_outlined, 'Conteo físico', 'Unirse a un conteo y escanear', '/inventory/counts'),
+        (Icons.playlist_add_check_rounded, 'Surtir', 'Una solicitud, escaneando', '/inventory/requests', NrColors.hues[2]),
+      if (s.can('inventory_transfers.create')) (Icons.swap_horiz_rounded, 'Traslado', 'Entre almacenes', '/inventory/movement/transfers', NrColors.hues[5]),
+      if (s.can('goods_receipts.create')) (Icons.add_box_rounded, 'Entrada', 'Ajuste con causalidad', '/inventory/movement/goods-receipts', NrColors.hues[1]),
+      if (s.can('goods_issues.create')) (Icons.indeterminate_check_box_rounded, 'Salida', 'Ajuste con causalidad', '/inventory/movement/goods-issues', NrColors.hues[4]),
+      if (s.canAny(['inventory_counts.update', 'inventory_counts.view'])) (Icons.fact_check_rounded, 'Conteo físico', 'Unirse y escanear', '/inventory/counts', NrColors.hues[3]),
+      if (s.canCheckPrices) (Icons.qr_code_scanner_rounded, 'Checador', 'Precio y existencia', '/checker', NrColors.hues[7]),
     ];
-    return Scaffold(
-      appBar: AppBar(title: const Text('Inventario'), actions: [
-        IconButton(icon: const Icon(Icons.qr_code_2), tooltip: 'Checador de precios', onPressed: () => context.push('/checker')),
-        const SyncIndicator(),
-      ]),
-      body: ListView(padding: const EdgeInsets.all(NrSpace.gutter), children: [
+    return NrScrollPage(
+      eyebrow: 'Terminal de mano',
+      title: 'Inventario',
+      actions: const [SyncIndicator()],
+      children: [
         NrCard(
+          depth: NrDepth.floating,
+          radius: NrRadius.hero,
           onTap: () => context.push('/warehouse'),
           child: Row(children: [
-            Icon(Icons.warehouse_outlined, color: context.nr.accent),
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(color: nr.accentSoft, borderRadius: BorderRadius.circular(NrRadius.xl)),
+              child: Icon(Icons.warehouse_rounded, color: nr.night ? nr.link : nr.accent),
+            ),
             const SizedBox(width: NrSpace.md),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('ALMACÉN DE TRABAJO', style: NrText.eyebrow(context)),
-                Text(s.warehouseName ?? 'Sin elegir', style: NrText.headline(context)),
+                const SizedBox(height: 2),
+                Text(s.warehouseName ?? 'Sin elegir', style: NrText.title(context).copyWith(fontSize: 18)),
               ]),
             ),
-            const Icon(Icons.chevron_right),
+            Text('Cambiar', style: NrText.label(context).copyWith(color: nr.link, fontWeight: FontWeight.w600)),
           ]),
         ),
-        const SizedBox(height: NrSpace.lg),
-        NrGroup(children: [
-          for (final t in tiles)
-            NrListRow(
-              leading: Icon(t.$1, color: context.nr.secondary),
-              title: t.$2,
-              subtitle: t.$3,
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.push(t.$4),
-            ),
-        ]),
-      ]),
+        NrSectionHeader('Movimientos'),
+        if (tiles.isEmpty)
+          const NrEmpty(icon: Icons.lock_outline_rounded, title: 'Sin permisos de inventario')
+        else
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: NrSpace.md,
+            crossAxisSpacing: NrSpace.md,
+            childAspectRatio: 1.45,
+            children: [
+              for (final (i, t) in tiles.indexed)
+                NrEntrance(index: i, child: NrTile(icon: t.$1, title: t.$2, subtitle: t.$3, color: t.$5, onTap: () => context.push(t.$4))),
+            ],
+          ),
+      ],
     );
   }
 }

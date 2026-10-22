@@ -141,12 +141,10 @@ class _PackageSheetState extends State<_PackageSheet> {
         top: false,
         child: Padding(
           padding: const EdgeInsets.all(NrSpace.lg),
-          child: SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: problem != null ? null : () => Navigator.pop(context, {for (final e in picked.entries) if (e.value.isNotEmpty) e.key: e.value}),
-              child: Text(problem ?? 'Agregar'),
-            ),
+          child: NrButton(
+            icon: problem == null ? Icons.add_rounded : null,
+            onPressed: problem != null ? null : () => Navigator.pop(context, {for (final e in picked.entries) if (e.value.isNotEmpty) e.key: e.value}),
+            label: problem ?? 'Agregar',
           ),
         ),
       ),

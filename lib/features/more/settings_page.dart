@@ -25,14 +25,17 @@ class SettingsPage extends ConsumerWidget {
       appBar: AppBar(title: const Text('Configuración')),
       body: ListView(padding: const EdgeInsets.all(NrSpace.gutter), children: [
         NrSectionHeader('Venta'),
-        NrGroup(children: [
+        NrCard(padding: const EdgeInsets.symmetric(horizontal: NrSpace.xs, vertical: NrSpace.xs), child: Column(children: [
           SwitchListTile(
             title: const Text('Modo de captura rápida'),
             subtitle: const Text('La venta abre la lista de artículos de la ruta (o tus favoritos) para teclear cantidades como en una libreta de pedidos.'),
             value: qc.enabled,
-            onChanged: notifier.setEnabled,
+            onChanged: (v) {
+              NrHaptics.tap();
+              notifier.setEnabled(v);
+            },
           ),
-        ]),
+        ])),
         NrSectionHeader('Favoritos para vender sin ruta', count: favorites.length),
         Text(
           'Con ruta se usa lo cargado en el camión. Sin ruta, estos artículos; si no eliges ninguno, los que más vendiste en los últimos 30 días.',
@@ -51,20 +54,38 @@ class SettingsPage extends ConsumerWidget {
             },
             children: [
               for (final f in favorites)
-                ListTile(
+                Padding(
                   key: ValueKey(f['id']),
-                  title: Text('${f['name']}'),
-                  subtitle: Text('${f['code'] ?? ''}'),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => notifier.setFavorites([...qc.favorites]..remove((f['id'] as num).toInt())),
+                  padding: const EdgeInsets.only(bottom: NrSpace.sm),
+                  child: NrCard(
+                    padding: const EdgeInsets.fromLTRB(NrSpace.md, NrSpace.sm, NrSpace.xs, NrSpace.sm),
+                    child: Row(children: [
+                      NrThumb(name: '${f['name']}', url: f['image_url'] as String?, size: 40),
+                      const SizedBox(width: NrSpace.md),
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text('${f['name']}', style: NrText.headline(context).copyWith(fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          Text('${f['code'] ?? ''}', style: NrText.caption(context)),
+                        ]),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        tooltip: 'Quitar',
+                        onPressed: () => notifier.setFavorites([...qc.favorites]..remove((f['id'] as num).toInt())),
+                      ),
+                      const Icon(Icons.drag_indicator_rounded),
+                    ]),
                   ),
                 ),
             ],
           ),
-        OutlinedButton.icon(
-          icon: const Icon(Icons.add),
-          label: const Text('Agregar artículo'),
+        if (favorites.isEmpty) const NrCard(depth: NrDepth.flat, child: NrEmpty(compact: true, icon: Icons.star_rounded, title: 'Sin favoritos', message: 'Se usará lo que más vendiste en 30 días.')),
+        const SizedBox(height: NrSpace.sm),
+        NrButton(
+          icon: Icons.add_rounded,
+          label: 'Agregar artículo',
+          variant: NrButtonVariant.secondary,
+          height: NrTouch.min,
           onPressed: () async {
             final item = await pickItem(context);
             if (item == null) return;

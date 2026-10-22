@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/api/api_error.dart';
@@ -555,6 +556,55 @@ NrTone documentTone(String? status) => switch (status) {
 
 const documentStatusLabels = {'draft': 'Borrador', 'open': 'Abierto', 'closed': 'Cerrado', 'cancelled': 'Cancelado'};
 
+IconData documentIcon(String? type) => saleTypes.where((t) => t.type == type).firstOrNull?.icon ?? switch (type) {
+      'credit_memo' => Icons.receipt_rounded,
+      'down_payment' => Icons.savings_rounded,
+      _ => Icons.description_rounded,
+    };
+
+/// Renglón de documento: tipo con su color, folio, cliente y fecha, monto y estado.
+class DocumentRow extends StatelessWidget {
+  const DocumentRow({super.key, required this.doc, this.onTap, this.showPartner = true});
+
+  final Map<String, dynamic> doc;
+  final VoidCallback? onTap;
+  final bool showPartner;
+
+  @override
+  Widget build(BuildContext context) {
+    final nr = context.nr;
+    final type = doc['type'] as String?;
+    final c = saleTypeColor(type ?? '');
+    final partner = '${doc['partner_name'] ?? asMap(doc['partner'])['name'] ?? ''}';
+    return NrListRow(
+      onTap: onTap,
+      leading: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(color: nr.tint(c, 0.13), borderRadius: BorderRadius.circular(NrRadius.lg)),
+        child: Icon(documentIcon(type), color: nr.tone(c), size: 20),
+      ),
+      title: '${documentTypeLabels[type] ?? type ?? ''} ${doc['folio'] ?? ''}',
+      subtitle: [if (showPartner && partner.isNotEmpty) partner, '${doc['document_date'] ?? ''}'].where((e) => e.isNotEmpty).join(' · '),
+      trailing: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
+        NrMoney(doc['total'], weight: FontWeight.w700),
+        const SizedBox(height: 4),
+        NrPill(documentStatusLabels[doc['status']] ?? '${doc['status'] ?? ''}', tone: documentTone(doc['status'] as String?), dot: true),
+      ]),
+    );
+  }
+}
+
+String _dayLabel(String? date) {
+  final d = DateTime.tryParse(date ?? '');
+  if (d == null) return 'Sin fecha';
+  final today = DateUtils.dateOnly(DateTime.now());
+  final days = today.difference(DateUtils.dateOnly(d)).inDays;
+  if (days == 0) return 'Hoy';
+  if (days == 1) return 'Ayer';
+  return DateFormat("EEEE d 'de' MMMM", 'es_MX').format(d);
+}
+
 class MyDocumentsPage extends ConsumerStatefulWidget {
   const MyDocumentsPage({super.key});
 
@@ -569,18 +619,26 @@ class _MyDocumentsPageState extends ConsumerState<MyDocumentsPage> {
   Widget build(BuildContext context) {
     final docs = ref.watch(_myDocumentsProvider(type));
     final queued = ref.watch(_queuedDocumentsProvider).valueOrNull ?? [];
+    final nr = context.nr;
     return Scaffold(
       appBar: AppBar(title: const Text('Mis documentos'), actions: const [SyncIndicator()]),
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(_myDocumentsProvider(type)),
-        child: ListView(padding: const EdgeInsets.all(NrSpace.gutter), children: [
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(children: [
+        child: ListView(padding: const EdgeInsets.fromLTRB(NrSpace.gutter, 0, NrSpace.gutter, NrSpace.xxxl), children: [
+          SizedBox(
+            height: 44,
+            child: ListView(scrollDirection: Axis.horizontal, children: [
               for (final e in {null: 'Todos', for (final t in saleTypes) t.type: t.label}.entries)
                 Padding(
                   padding: const EdgeInsets.only(right: NrSpace.sm),
-                  child: ChoiceChip(label: Text(e.value), selected: type == e.key, onSelected: (_) => setState(() => type = e.key)),
+                  child: ChoiceChip(
+                    label: Text(e.value),
+                    selected: type == e.key,
+                    onSelected: (_) {
+                      NrHaptics.tap();
+                      setState(() => type = e.key);
+                    },
+                  ),
                 ),
             ]),
           ),
@@ -589,39 +647,48 @@ class _MyDocumentsPageState extends ConsumerState<MyDocumentsPage> {
             NrGroup(children: [
               for (final op in queued)
                 NrListRow(
-                  leading: const Icon(Icons.cloud_upload_outlined),
+                  leading: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(color: op.error == null ? nr.warningBg : nr.dangerBg, borderRadius: BorderRadius.circular(NrRadius.lg)),
+                    child: Icon(op.error == null ? Icons.cloud_upload_rounded : Icons.error_outline_rounded, color: op.error == null ? nr.warning : nr.danger, size: 20),
+                  ),
                   title: op.label,
                   subtitle: op.error ?? 'Se enviará al recuperar señal',
-                  trailing: NrPill(op.error == null ? 'En cola' : 'Error', tone: op.error == null ? NrTone.warning : NrTone.danger),
+                  trailing: NrPill(op.error == null ? 'En cola' : 'Error', tone: op.error == null ? NrTone.warning : NrTone.danger, dot: true),
                   onTap: () => context.push('/sync'),
                 ),
             ]),
           ],
           ...docs.when(
-            loading: () => [const Padding(padding: EdgeInsets.all(NrSpace.xl), child: Center(child: CircularProgressIndicator()))],
+            skipLoadingOnReload: true,
+            loading: () => [const SizedBox(height: NrSpace.lg), const SizedBox(height: 420, child: NrSkeletonList(count: 6, padding: EdgeInsets.zero))],
             error: (e, _) => [NrErrorView(e, onRetry: () => ref.invalidate(_myDocumentsProvider(type)))],
             data: (r) {
               final (rows, offline) = r;
+              final groups = <String, List<Map<String, dynamic>>>{};
+              for (final d in rows) {
+                groups.putIfAbsent(_dayLabel(d['document_date'] as String?), () => []).add(d);
+              }
+              final dayTotal = {for (final e in groups.entries) e.key: e.value.fold(Dec.zero, (s, d) => d['status'] == 'cancelled' ? s : s + Dec.parse(d['total']))};
               return [
-                if (offline)
-                  const Padding(padding: EdgeInsets.only(top: NrSpace.md), child: NrPill('Sin señal: lista guardada', tone: NrTone.warning, icon: Icons.cloud_off)),
-                NrSectionHeader('Recientes', count: rows.length),
+                if (offline) const Padding(padding: EdgeInsets.only(top: NrSpace.md), child: NrBanner(message: 'Sin señal: lista guardada.')),
                 if (rows.isEmpty)
-                  const NrEmpty(icon: Icons.description_outlined, title: 'Sin documentos')
+                  NrEmpty(
+                    icon: Icons.receipt_long_rounded,
+                    title: 'Sin documentos',
+                    message: type == null ? 'Lo que vendas o cotices aparecerá aquí con su estado y su PDF.' : 'No hay documentos de este tipo.',
+                    action: 'Vender',
+                    onAction: () => context.go('/sell'),
+                  )
                 else
-                  NrGroup(children: [
-                    for (final d in rows)
-                      NrListRow(
-                        title: '${documentTypeLabels[d['type']] ?? d['type']} ${d['folio'] ?? ''}',
-                        subtitle: '${d['partner_name'] ?? asMap(d['partner'])['name'] ?? ''} · ${d['document_date'] ?? ''}',
-                        trailing: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                          NrMoney(d['total']),
-                          const SizedBox(height: 2),
-                          NrPill(documentStatusLabels[d['status']] ?? '${d['status']}', tone: documentTone(d['status'] as String?)),
-                        ]),
-                        onTap: () => _documentActions(context, ref, d),
-                      ),
-                  ]),
+                  for (final (gi, e) in groups.entries.indexed) ...[
+                    NrSectionHeader(e.key, count: e.value.length, trailing: Text(money(dayTotal[e.key]), style: NrText.money(context, size: 13).copyWith(color: nr.secondary))),
+                    NrEntrance(
+                      index: gi,
+                      child: NrGroup(inset: 68, children: [for (final d in e.value) DocumentRow(doc: d, onTap: () => _documentActions(context, ref, d))]),
+                    ),
+                  ],
               ];
             },
           ),
@@ -632,26 +699,28 @@ class _MyDocumentsPageState extends ConsumerState<MyDocumentsPage> {
 }
 
 /// Enviar el PDF o reimprimir en la impresora térmica.
-Future<void> _documentActions(BuildContext context, WidgetRef ref, Map<String, dynamic> d) => showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(
-            leading: const Icon(Icons.print_outlined),
-            title: const Text('Reimprimir'),
-            onTap: () {
-              Navigator.pop(ctx);
-              reprintDocument(context, ref, (d['id'] as num).toInt());
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.picture_as_pdf_outlined),
-            title: const Text('Enviar PDF'),
-            onTap: () {
-              Navigator.pop(ctx);
-              shareDocument(context, ref, kind: 'document', id: (d['id'] as num).toInt(), title: '${d['folio']}');
-            },
-          ),
-        ]),
-      ),
+Future<void> _documentActions(BuildContext context, WidgetRef ref, Map<String, dynamic> d) => showNrSheet<void>(
+      context,
+      title: '${documentTypeLabels[d['type']] ?? d['type']} ${d['folio'] ?? ''}',
+      subtitle: '${d['partner_name'] ?? asMap(d['partner'])['name'] ?? ''} · ${money(d['total'])}',
+      builder: (ctx) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        NrButton(
+          label: 'Enviar PDF',
+          icon: Icons.ios_share_rounded,
+          onPressed: () {
+            Navigator.pop(ctx);
+            shareDocument(context, ref, kind: 'document', id: (d['id'] as num).toInt(), title: '${d['folio']}');
+          },
+        ),
+        const SizedBox(height: NrSpace.sm),
+        NrButton(
+          label: 'Reimprimir',
+          icon: Icons.print_rounded,
+          variant: NrButtonVariant.secondary,
+          onPressed: () {
+            Navigator.pop(ctx);
+            reprintDocument(context, ref, (d['id'] as num).toInt());
+          },
+        ),
+      ]),
     );

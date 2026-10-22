@@ -62,61 +62,126 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    final nr = context.nr;
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: ListView(shrinkWrap: true, padding: const EdgeInsets.all(NrSpace.xxl), children: [
-              const _Brand(),
-              const SizedBox(height: NrSpace.sm),
-              Text('Venta en ruta, inventario y supervisión.', style: NrText.bodySm(context)),
-              const SizedBox(height: NrSpace.xxxl),
-              TextField(
-                controller: server,
-                keyboardType: TextInputType.url,
-                autocorrect: false,
-                decoration: const InputDecoration(labelText: 'Empresa o servidor', hintText: 'miempresa  ·  miempresa.nori.mx', prefixIcon: Icon(Icons.business_outlined)),
-              ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(onPressed: () => setState(() => advanced = !advanced), child: Text(advanced ? 'Ocultar opciones' : 'Opciones avanzadas')),
-              ),
-              if (advanced) ...[
-                TextField(
-                  controller: tenant,
-                  autocorrect: false,
-                  decoration: const InputDecoration(labelText: 'Código de empresa (dominio central)', helperText: 'Solo si el servidor es compartido, p. ej. api.nori.mx'),
+      body: Stack(children: [
+        const _Glow(),
+        SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: ListView(shrinkWrap: true, padding: const EdgeInsets.fromLTRB(NrSpace.xxl, NrSpace.xl, NrSpace.xxl, NrSpace.xxl), children: [
+                const NrEntrance(child: _Brand()),
+                const SizedBox(height: NrSpace.xxl),
+                NrEntrance(index: 1, child: Text('Entra a tu empresa', style: NrText.display(context))),
+                const SizedBox(height: NrSpace.xs),
+                NrEntrance(index: 1, child: Text('Venta en ruta, inventario y supervisión. Funciona sin señal.', style: NrText.body(context).copyWith(color: nr.secondary))),
+                const SizedBox(height: NrSpace.xxl),
+                NrEntrance(
+                  index: 2,
+                  child: NrCard(
+                    depth: NrDepth.floating,
+                    radius: NrRadius.hero,
+                    padding: const EdgeInsets.all(NrSpace.xl),
+                    child: AutofillGroup(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        TextField(
+                          controller: server,
+                          keyboardType: TextInputType.url,
+                          autocorrect: false,
+                          textInputAction: TextInputAction.next,
+                          decoration: const InputDecoration(labelText: 'Empresa o servidor', hintText: 'miempresa  ·  miempresa.nori.mx', prefixIcon: Icon(Icons.business_rounded)),
+                        ),
+                        AnimatedSize(
+                          duration: NrMotion.base,
+                          curve: NrMotion.ease,
+                          child: advanced
+                              ? Padding(
+                                  padding: const EdgeInsets.only(top: NrSpace.md),
+                                  child: TextField(
+                                    controller: tenant,
+                                    autocorrect: false,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Código de empresa (dominio central)',
+                                      helperText: 'Solo si el servidor es compartido, p. ej. api.nori.mx',
+                                      prefixIcon: Icon(Icons.key_rounded),
+                                    ),
+                                  ),
+                                )
+                              : const SizedBox(width: double.infinity),
+                        ),
+                        const SizedBox(height: NrSpace.md),
+                        TextField(
+                          controller: user,
+                          autocorrect: false,
+                          autofillHints: const [AutofillHints.username],
+                          textInputAction: TextInputAction.next,
+                          decoration: const InputDecoration(labelText: 'Usuario', prefixIcon: Icon(Icons.person_rounded)),
+                        ),
+                        const SizedBox(height: NrSpace.md),
+                        TextField(
+                          controller: password,
+                          obscureText: obscure,
+                          autofillHints: const [AutofillHints.password],
+                          onSubmitted: (_) => _submit(),
+                          decoration: InputDecoration(
+                            labelText: 'Contraseña',
+                            prefixIcon: const Icon(Icons.lock_rounded),
+                            suffixIcon: IconButton(
+                              tooltip: obscure ? 'Mostrar' : 'Ocultar',
+                              icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                              onPressed: () => setState(() => obscure = !obscure),
+                            ),
+                          ),
+                        ),
+                        AnimatedSize(
+                          duration: NrMotion.base,
+                          curve: NrMotion.ease,
+                          child: error == null
+                              ? const SizedBox(width: double.infinity)
+                              : Padding(
+                                  padding: const EdgeInsets.only(top: NrSpace.md),
+                                  child: NrBanner(message: error!, tone: NrTone.danger, icon: Icons.error_outline_rounded),
+                                ),
+                        ),
+                        const SizedBox(height: NrSpace.xl),
+                        NrButton(label: 'Entrar', icon: Icons.arrow_forward_rounded, busy: busy, onPressed: _submit),
+                      ]),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: NrSpace.md),
-              ],
-              TextField(
-                controller: user,
-                autocorrect: false,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(labelText: 'Usuario', prefixIcon: Icon(Icons.person_outline)),
-              ),
-              const SizedBox(height: NrSpace.md),
-              TextField(
-                controller: password,
-                obscureText: obscure,
-                onSubmitted: (_) => _submit(),
-                decoration: InputDecoration(
-                  labelText: 'Contraseña',
-                  prefixIcon: const Icon(Icons.lock_outline),
-                  suffixIcon: IconButton(icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined), onPressed: () => setState(() => obscure = !obscure)),
+                Center(
+                  child: TextButton(
+                    onPressed: () => setState(() => advanced = !advanced),
+                    child: Text(advanced ? 'Ocultar opciones avanzadas' : 'Opciones avanzadas'),
+                  ),
                 ),
-              ),
-              if (error != null) ...[
-                const SizedBox(height: NrSpace.md),
-                Text(error!, style: NrText.bodySm(context).copyWith(color: context.nr.danger)),
-              ],
-              const SizedBox(height: NrSpace.xl),
-              FilledButton(
-                onPressed: busy ? null : _submit,
-                child: busy ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Entrar'),
-              ),
-            ]),
+              ]),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+/// Halo suave del acento detrás del inicio de sesión (como el punto de venta de nori-web).
+class _Glow extends StatelessWidget {
+  const _Glow();
+
+  @override
+  Widget build(BuildContext context) {
+    final nr = context.nr;
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              center: const Alignment(0.9, -1.1),
+              radius: 1.2,
+              colors: [nr.accent.withValues(alpha: nr.night ? 0.22 : 0.14), nr.accent.withValues(alpha: 0)],
+            ),
           ),
         ),
       ),
@@ -142,27 +207,35 @@ class _UnlockPageState extends ConsumerState<UnlockPage> {
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(sessionProvider);
+    final nr = context.nr;
     return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(NrSpace.xxl),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            const Spacer(),
-            const _Brand(),
-            const SizedBox(height: NrSpace.lg),
-            Text('Hola, ${s?.userName ?? ''}', style: NrText.title(context)),
-            Text(s?.tenantName ?? '', style: NrText.bodySm(context)),
-            const Spacer(),
-            FilledButton.icon(
-              onPressed: () => ref.read(authProvider.notifier).unlock(),
-              icon: const Icon(Icons.fingerprint),
-              label: const Text('Desbloquear'),
-            ),
-            const SizedBox(height: NrSpace.sm),
-            TextButton(onPressed: () => ref.read(authProvider.notifier).logout(), child: const Text('Entrar con contraseña')),
-          ]),
+      body: Stack(children: [
+        const _Glow(),
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(NrSpace.xxl),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const Spacer(),
+              const _Brand(),
+              const SizedBox(height: NrSpace.xxl),
+              Row(children: [
+                NrAvatar(s?.userName ?? '', size: 56, color: nr.accent),
+                const SizedBox(width: NrSpace.md),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Hola, ${s?.userName ?? ''}', style: NrText.title(context)),
+                    Text(s?.tenantName ?? '', style: NrText.bodySm(context)),
+                  ]),
+                ),
+              ]),
+              const Spacer(flex: 2),
+              NrButton(label: 'Desbloquear', icon: Icons.fingerprint_rounded, onPressed: () => ref.read(authProvider.notifier).unlock()),
+              const SizedBox(height: NrSpace.sm),
+              NrButton(label: 'Entrar con contraseña', variant: NrButtonVariant.ghost, onPressed: () => ref.read(authProvider.notifier).logout()),
+            ]),
+          ),
         ),
-      ),
+      ]),
     );
   }
 }
@@ -186,18 +259,23 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     final list = s.warehouses.where((w) => allowed.isEmpty || allowed.contains(w['id'])).toList();
     return Scaffold(
       appBar: AppBar(title: const Text('Almacén de trabajo'), automaticallyImplyLeading: !s.mustChooseWarehouse),
-      body: ListView(padding: const EdgeInsets.all(NrSpace.gutter), children: [
+      body: ListView(padding: const EdgeInsets.fromLTRB(NrSpace.gutter, NrSpace.xs, NrSpace.gutter, NrSpace.xxxl), children: [
         Text('Documentos, series y existencias parten de este almacén.', style: NrText.bodySm(context)),
         const SizedBox(height: NrSpace.lg),
-        NrGroup(children: [
+        NrGroup(inset: 64, children: [
           for (final w in list)
             NrListRow(
-              leading: Icon(Icons.warehouse_outlined, color: w['id'] == s.warehouseId ? context.nr.accent : context.nr.secondary),
+              leading: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(color: w['id'] == s.warehouseId ? context.nr.accentSoft : context.nr.raised, borderRadius: BorderRadius.circular(NrRadius.lg)),
+                child: Icon(Icons.warehouse_rounded, size: 20, color: w['id'] == s.warehouseId ? context.nr.accent : context.nr.secondary),
+              ),
               title: '${w['name']}',
               subtitle: '${w['code'] ?? ''}',
               trailing: busyId == w['id']
                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                  : (w['id'] == s.warehouseId ? Icon(Icons.check, color: context.nr.accent) : null),
+                  : (w['id'] == s.warehouseId ? Icon(Icons.check_circle_rounded, color: context.nr.accent) : null),
               onTap: () async {
                 setState(() => busyId = (w['id'] as num).toInt());
                 try {
@@ -205,7 +283,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
                   ref.read(syncEngineProvider)?.syncNow();
                   if (context.mounted) context.go('/');
                 } on ApiException catch (e) {
-                  if (context.mounted) showSnack(context, e.userMessage);
+                  if (context.mounted) showSnack(context, e.userMessage, tone: NrTone.danger);
                 } finally {
                   if (mounted) setState(() => busyId = null);
                 }

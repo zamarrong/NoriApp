@@ -432,10 +432,13 @@ class _ReasonChip extends StatelessWidget {
 
 /// Número de la parada con el color de su estado (y Hero hacia la visita).
 class _SeqBadge extends StatelessWidget {
-  const _SeqBadge({required this.stop, this.size = 32});
+  const _SeqBadge({required this.stop, this.size = 32, this.hero = true});
 
   final Map<String, dynamic> stop;
   final double size;
+
+  /// La parada siguiente sale dos veces (tarjeta y lista): solo una lleva el Hero.
+  final bool hero;
 
   @override
   Widget build(BuildContext context) {
@@ -447,9 +450,7 @@ class _SeqBadge extends StatelessWidget {
       'in_progress' => (nr.accent, nr.onAccent),
       _ => (nr.surface, nr.headline),
     };
-    return Hero(
-      tag: 'stop-${stop['id']}',
-      child: Container(
+    final badge = Container(
         width: size,
         height: size,
         alignment: Alignment.center,
@@ -464,8 +465,8 @@ class _SeqBadge extends StatelessWidget {
           'skipped' => Icon(Icons.close_rounded, size: size * 0.5, color: fg),
           _ => Text('${stop['sequence'] ?? ''}', style: NrText.label(context).copyWith(color: fg, fontWeight: FontWeight.w700, fontSize: size * 0.4)),
         },
-      ),
-    );
+      );
+    return hero ? Hero(tag: 'stop-${stop['id']}', child: badge) : badge;
   }
 }
 
@@ -479,6 +480,7 @@ class _Timeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final nr = context.nr;
+    final next = nextStop(stops)?['id'];
     return NrCard(
       padding: const EdgeInsets.symmetric(vertical: NrSpace.sm),
       child: Column(children: [
@@ -501,7 +503,7 @@ class _Timeline extends StatelessWidget {
                           height: i == stops.length - 1 ? 32 : null,
                           child: Container(width: 2, color: stops[i]['status'] == 'completed' ? nr.success.withValues(alpha: 0.35) : nr.border),
                         ),
-                        Positioned(top: 16, child: _SeqBadge(stop: stops[i])),
+                        Positioned(top: 16, child: _SeqBadge(stop: stops[i], hero: stops[i]['id'] != next)),
                       ]),
                     ),
                     Expanded(child: _StopBody(stop: stops[i])),

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -65,7 +67,7 @@ class _DeliveryPageState extends ConsumerState<DeliveryPage> {
       final docs = asList(body['documents']);
       if (docs.isNotEmpty && mounted) await showDoneDialog(context, ref, '${body['message'] ?? 'Entregado'}', docs.first);
     } else {
-      showSnack(context, 'Entrega guardada sin señal.');
+      showSnack(context, 'Entrega guardada sin señal.', tone: NrTone.warning);
     }
     if (mounted) Navigator.of(context).pop(true);
   }
@@ -80,11 +82,13 @@ class _DeliveryPageState extends ConsumerState<DeliveryPage> {
           NrGroup(children: [
             for (final l in asList(o['lines']))
               NrListRow(
+                leading: NrThumb(name: '${l['name']}', size: 40),
                 title: '${l['name']}',
                 subtitle: '${l['code']} · pendiente ${Dec.parse(l['open']).toQty()} · ${money(l['price'])}',
                 trailing: SizedBox(
-                  width: 80,
+                  width: 72,
                   child: TextFormField(
+                    style: NrText.money(context, size: 18, weight: FontWeight.w700),
                     initialValue: qty[(l['base_line_id'] as num).toInt()]!.toQty(),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     textAlign: TextAlign.end,
@@ -98,7 +102,7 @@ class _DeliveryPageState extends ConsumerState<DeliveryPage> {
           ]),
         ],
       ]),
-      bottomNavigationBar: NrBottomAction(label: 'Entregar ${money(total)}', busy: busy, onPressed: _submit),
+      bottomNavigationBar: NrBottomAction(label: 'Entregar ${money(total)}', icon: Icons.local_shipping_rounded, busy: busy, onPressed: _submit),
     );
   }
 }
@@ -154,7 +158,8 @@ class _AssetServicePageState extends ConsumerState<AssetServicePage> {
       final r = asMap(await ref.read(apiProvider).post('/route/visits/${widget.visit['id']}/asset-service', body: form, key: key));
       await ref.read(routeRepoProvider).saveVisit(asMap(r['visit']));
       if (mounted) {
-        showSnack(context, 'Servicio registrado.');
+        NrHaptics.success();
+        showSnack(context, 'Servicio registrado.', tone: NrTone.success);
         Navigator.of(context).pop(true);
       }
     } on ApiException catch (e) {
@@ -171,6 +176,7 @@ class _AssetServicePageState extends ConsumerState<AssetServicePage> {
       appBar: AppBar(title: const Text('Mantenimiento')),
       body: ListView(padding: const EdgeInsets.all(NrSpace.gutter), children: [
         DropdownButtonFormField<int>(
+          isExpanded: true,
           initialValue: (asset?['id'] as num?)?.toInt(),
           decoration: const InputDecoration(labelText: 'Equipo'),
           items: [
@@ -181,28 +187,65 @@ class _AssetServicePageState extends ConsumerState<AssetServicePage> {
         ),
         const SizedBox(height: NrSpace.md),
         DropdownButtonFormField<String>(
+          isExpanded: true,
           initialValue: kind,
           decoration: const InputDecoration(labelText: 'Tipo de servicio'),
           items: [for (final e in kinds.entries) DropdownMenuItem(value: e.key, child: Text(e.value))],
           onChanged: (v) => setState(() => kind = v!),
         ),
         const SizedBox(height: NrSpace.md),
-        DropdownButtonFormField<String>(
-          initialValue: condition,
-          decoration: const InputDecoration(labelText: 'Estado del equipo'),
-          items: [for (final e in conditions.entries) DropdownMenuItem(value: e.key, child: Text(e.value))],
-          onChanged: (v) => setState(() => condition = v!),
-        ),
+        Text('ESTADO DEL EQUIPO', style: NrText.eyebrow(context)),
+        const SizedBox(height: NrSpace.sm),
+        Wrap(spacing: NrSpace.sm, runSpacing: NrSpace.sm, children: [
+          for (final e in conditions.entries)
+            ChoiceChip(
+              avatar: Icon(
+                switch (e.key) { 'working' => Icons.check_circle_rounded, 'needs_repair' => Icons.build_circle_rounded, _ => Icons.cancel_rounded },
+                size: 18,
+                color: condition == e.key ? context.nr.onInk : switch (e.key) { 'working' => context.nr.success, 'needs_repair' => context.nr.warning, _ => context.nr.danger },
+              ),
+              label: Text(e.value),
+              selected: condition == e.key,
+              onSelected: (_) => setState(() => condition = e.key),
+            ),
+        ]),
         const SizedBox(height: NrSpace.md),
         TextField(controller: temperature, keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true), decoration: const InputDecoration(labelText: 'Temperatura °C')),
         const SizedBox(height: NrSpace.md),
         TextField(controller: notes, maxLines: 3, decoration: const InputDecoration(labelText: 'Notas')),
-        NrSectionHeader('Fotos', count: photos.length, action: photos.length < 6 ? 'Tomar foto' : null, onAction: _photo),
-        Wrap(spacing: NrSpace.sm, children: [
-          for (final p in photos) Chip(label: Text(p.name), onDeleted: () => setState(() => photos.remove(p))),
+        NrSectionHeader('Fotos', count: photos.length),
+        Wrap(spacing: NrSpace.sm, runSpacing: NrSpace.sm, children: [
+          for (final p in photos)
+            Stack(clipBehavior: Clip.none, children: [
+              ClipRRect(borderRadius: BorderRadius.circular(NrRadius.lg), child: Image.file(File(p.path), width: 96, height: 96, fit: BoxFit.cover)),
+              Positioned(
+                right: -6,
+                top: -6,
+                child: Material(
+                  color: context.nr.ink,
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: () => setState(() => photos.remove(p)),
+                    child: Padding(padding: const EdgeInsets.all(4), child: Icon(Icons.close_rounded, size: 16, color: context.nr.onInk)),
+                  ),
+                ),
+              ),
+            ]),
+          if (photos.length < 6)
+            InkWell(
+              onTap: _photo,
+              borderRadius: BorderRadius.circular(NrRadius.lg),
+              child: Container(
+                width: 96,
+                height: 96,
+                decoration: BoxDecoration(color: context.nr.accentSoft, borderRadius: BorderRadius.circular(NrRadius.lg)),
+                child: Icon(Icons.add_a_photo_rounded, color: context.nr.accent),
+              ),
+            ),
         ]),
       ]),
-      bottomNavigationBar: NrBottomAction(label: 'Registrar servicio', busy: busy, onPressed: asset == null ? null : _submit),
+      bottomNavigationBar: NrBottomAction(label: 'Registrar servicio', icon: Icons.check_rounded, busy: busy, onPressed: asset == null ? null : _submit),
     );
   }
 }

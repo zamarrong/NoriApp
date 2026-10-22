@@ -2,6 +2,17 @@ import 'package:flutter/material.dart';
 
 import '../../core/design/design.dart';
 
+/// Ícono según el nombre de la forma de pago.
+IconData tenderIcon(Map<String, dynamic> t) {
+  final n = '${t['name'] ?? ''}'.toLowerCase();
+  if (n.contains('efectivo') || t['gives_change'] == true) return Icons.payments_rounded;
+  if (n.contains('transfer') || n.contains('spei') || n.contains('depósito')) return Icons.account_balance_rounded;
+  if (n.contains('tarjeta') || n.contains('crédito') || n.contains('débito')) return Icons.credit_card_rounded;
+  if (n.contains('cheque')) return Icons.request_page_rounded;
+  if (n.contains('vale')) return Icons.confirmation_number_rounded;
+  return Icons.account_balance_wallet_rounded;
+}
+
 class TenderChoice {
   const TenderChoice({required this.tenders, this.onCredit = false});
 
@@ -46,16 +57,8 @@ class _TenderSheetState extends State<_TenderSheet> {
     selected = widget.tenderTypes.firstOrNull;
   }
 
-  /// Ícono según el nombre de la forma de pago.
-  static IconData iconFor(Map<String, dynamic> t) {
-    final n = '${t['name'] ?? ''}'.toLowerCase();
-    if (n.contains('efectivo') || t['gives_change'] == true) return Icons.payments_rounded;
-    if (n.contains('transfer') || n.contains('spei') || n.contains('depósito')) return Icons.account_balance_rounded;
-    if (n.contains('tarjeta') || n.contains('crédito') || n.contains('débito')) return Icons.credit_card_rounded;
-    if (n.contains('cheque')) return Icons.request_page_rounded;
-    if (n.contains('vale')) return Icons.confirmation_number_rounded;
-    return Icons.account_balance_wallet_rounded;
-  }
+  static IconData iconFor(Map<String, dynamic> t) => tenderIcon(t);
+
 
   /// Billetes con los que suelen pagar: el total exacto y redondeos hacia arriba.
   List<Dec> _suggestions() {

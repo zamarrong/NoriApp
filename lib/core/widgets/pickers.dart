@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:share_plus/share_plus.dart';
@@ -30,15 +31,37 @@ class _ScanPageState extends State<_ScanPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(title: const Text('Escanear'), backgroundColor: Colors.black, foregroundColor: Colors.white),
-      body: MobileScanner(
-        onDetect: (capture) {
-          final code = capture.barcodes.map((b) => b.rawValue).whereType<String>().firstOrNull;
-          if (code == null || _done) return;
-          _done = true;
-          Navigator.of(context).pop(code);
-        },
-      ),
+      appBar: AppBar(title: const Text('Escanear'), backgroundColor: Colors.black, foregroundColor: Colors.white, systemOverlayStyle: const SystemUiOverlayStyle(statusBarBrightness: Brightness.dark)),
+      body: Stack(fit: StackFit.expand, children: [
+        MobileScanner(
+          onDetect: (capture) {
+            final code = capture.barcodes.map((b) => b.rawValue).whereType<String>().firstOrNull;
+            if (code == null || _done) return;
+            _done = true;
+            NrHaptics.success();
+            Navigator.of(context).pop(code);
+          },
+        ),
+        IgnorePointer(
+          child: Center(
+            child: Container(
+              width: 270,
+              height: 170,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.white, width: 3),
+                borderRadius: BorderRadius.circular(NrRadius.xxl),
+                boxShadow: const [BoxShadow(color: Color(0x99000000), spreadRadius: 2000)],
+              ),
+            ),
+          ),
+        ),
+        const Positioned(
+          left: 0,
+          right: 0,
+          bottom: 72,
+          child: Text('Centra el código en el recuadro', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
+        ),
+      ]),
     );
   }
 }
@@ -102,17 +125,15 @@ class _ItemSearchState extends ConsumerState<_ItemSearch> {
 
   @override
   Widget build(BuildContext context) {
+    final nr = context.nr;
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(NrSpace.lg, 0, NrSpace.lg, NrSpace.sm),
-        child: TextField(
+        child: NrSearchField(
           controller: _text,
           autofocus: true,
-          decoration: InputDecoration(
-            hintText: 'Código, nombre o código de barras',
-            prefixIcon: const Icon(Icons.search),
-            suffixIcon: IconButton(icon: const Icon(Icons.qr_code_scanner), tooltip: 'Escanear', onPressed: _scan),
-          ),
+          hint: 'Código, nombre o código de barras',
+          onScan: _scan,
           onChanged: (v) {
             _debounce?.cancel();
             _debounce = Timer(const Duration(milliseconds: 250), () => _search(v));
@@ -125,16 +146,22 @@ class _ItemSearchState extends ConsumerState<_ItemSearch> {
       ),
       Expanded(
         child: _results.isEmpty
-            ? const NrEmpty(icon: Icons.inventory_2_outlined, title: 'Sin artículos', message: 'Sincroniza o busca con otro texto.')
+            ? const NrEmpty(icon: Icons.inventory_2_rounded, title: 'Sin artículos', message: 'Sincroniza o busca con otro texto.')
             : ListView.separated(
+                padding: const EdgeInsets.only(bottom: NrSpace.xl),
                 itemCount: _results.length,
-                separatorBuilder: (_, _) => const Divider(height: 1),
+                separatorBuilder: (_, _) => Divider(height: 1, indent: 76, color: nr.border),
                 itemBuilder: (_, i) {
                   final it = _results[i];
                   return NrListRow(
+                    leading: NrThumb(name: '${it['name']}', url: it['image_url'] as String?, size: 44),
                     title: '${it['name']}',
                     subtitle: '${it['code']}',
-                    onTap: () => Navigator.of(context).pop(it),
+                    trailing: Icon(Icons.add_circle_rounded, color: nr.accent, size: 26),
+                    onTap: () {
+                      NrHaptics.tap();
+                      Navigator.of(context).pop(it);
+                    },
                   );
                 },
               ),
@@ -178,30 +205,35 @@ class _CustomerSearchState extends ConsumerState<_CustomerSearch> {
 
   @override
   Widget build(BuildContext context) {
+    final nr = context.nr;
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(NrSpace.lg, 0, NrSpace.lg, NrSpace.sm),
-        child: TextField(
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'Buscar cliente', prefixIcon: Icon(Icons.search)),
-          onChanged: _search,
-        ),
+        child: NrSearchField(autofocus: true, hint: 'Nombre, código, RFC o teléfono', onChanged: _search),
       ),
       Expanded(
-        child: ListView.separated(
-          itemCount: _results.length,
-          separatorBuilder: (_, _) => const Divider(height: 1),
-          itemBuilder: (_, i) {
-            final c = _results[i];
-            final name = '${c['trade_name'] ?? c['name']}';
-            return NrListRow(
-              leading: NrAvatar(name),
-              title: name,
-              subtitle: '${c['code']}',
-              onTap: () => Navigator.of(context).pop(c),
-            );
-          },
-        ),
+        child: _results.isEmpty
+            ? const NrEmpty(icon: Icons.people_alt_rounded, title: 'Sin resultados', message: 'Prueba con otro texto o sincroniza tu cartera.')
+            : ListView.separated(
+                padding: const EdgeInsets.only(bottom: NrSpace.xl),
+                itemCount: _results.length,
+                separatorBuilder: (_, _) => Divider(height: 1, indent: 72, color: nr.border),
+                itemBuilder: (_, i) {
+                  final c = _results[i];
+                  final name = '${c['trade_name'] ?? c['name']}';
+                  final balance = Dec.parse(c['balance']);
+                  return NrListRow(
+                    leading: NrAvatar(name),
+                    title: name,
+                    subtitle: '${c['code']}',
+                    trailing: balance > Dec.zero ? Text(moneyCompact(balance), style: NrText.money(context, size: 14, weight: FontWeight.w700)) : null,
+                    onTap: () {
+                      NrHaptics.tap();
+                      Navigator.of(context).pop(c);
+                    },
+                  );
+                },
+              ),
       ),
     ]);
   }
@@ -211,14 +243,14 @@ class _CustomerSearchState extends ConsumerState<_CustomerSearch> {
 /// o lo envía por correo desde el servidor.
 Future<void> shareDocument(BuildContext context, WidgetRef ref, {required String kind, required int id, String? title}) async {
   final path = kind == 'payment' ? '/payments/$id' : '/documents/$id';
-  final choice = await showModalBottomSheet<String>(
-    context: context,
-    builder: (_) => SafeArea(
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        ListTile(leading: const Icon(Icons.share_outlined), title: const Text('Compartir liga del PDF (WhatsApp…)'), onTap: () => Navigator.pop(context, 'share')),
-        ListTile(leading: const Icon(Icons.email_outlined), title: const Text('Enviar por correo al cliente'), onTap: () => Navigator.pop(context, 'email')),
-      ]),
-    ),
+  final choice = await showNrSheet<String>(
+    context,
+    title: 'Enviar ${title ?? 'documento'}',
+    builder: (ctx) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      NrButton(label: 'Compartir liga (WhatsApp…)', icon: Icons.ios_share_rounded, onPressed: () => Navigator.pop(ctx, 'share')),
+      const SizedBox(height: NrSpace.sm),
+      NrButton(label: 'Enviar por correo al cliente', icon: Icons.mail_rounded, variant: NrButtonVariant.secondary, onPressed: () => Navigator.pop(ctx, 'email')),
+    ]),
   );
   if (choice == null || !context.mounted) return;
   try {
@@ -230,9 +262,9 @@ Future<void> shareDocument(BuildContext context, WidgetRef ref, {required String
     } else {
       final op = OutboxOp.create('POST', '$path/email', body: {}, label: 'Correo ${title ?? ''}');
       final r = await ref.read(writerProvider).send(op);
-      if (context.mounted) showSnack(context, r.queued ? 'Se enviará al recuperar señal.' : 'Correo enviado.');
+      if (context.mounted) showSnack(context, r.queued ? 'Se enviará al recuperar señal.' : 'Correo enviado.', tone: r.queued ? NrTone.warning : NrTone.success);
     }
   } on ApiException catch (e) {
-    if (context.mounted) showSnack(context, e.userMessage);
+    if (context.mounted) showSnack(context, e.userMessage, tone: NrTone.danger);
   }
 }

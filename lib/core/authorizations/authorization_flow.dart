@@ -144,9 +144,19 @@ class _AuthorizationSheetState extends ConsumerState<AuthorizationSheet> {
         padding: const EdgeInsets.fromLTRB(NrSpace.xl, 0, NrSpace.xl, NrSpace.xl),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
-            Icon(Icons.verified_user_outlined, color: nr.warning),
-            const SizedBox(width: NrSpace.sm),
-            Expanded(child: Text(c.label, style: NrText.title(context))),
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(color: nr.warningBg, borderRadius: BorderRadius.circular(NrRadius.lg)),
+              child: Icon(Icons.verified_user_rounded, color: nr.warning),
+            ),
+            const SizedBox(width: NrSpace.md),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('NECESITA AUTORIZACIÓN', style: NrText.eyebrow(context).copyWith(color: nr.warning)),
+                Text(c.label, style: NrText.title(context).copyWith(fontSize: 18)),
+              ]),
+            ),
           ]),
           if (c.reference.isNotEmpty) ...[
             const SizedBox(height: NrSpace.xs),
@@ -155,14 +165,15 @@ class _AuthorizationSheetState extends ConsumerState<AuthorizationSheet> {
           const SizedBox(height: NrSpace.lg),
           if (request != null) ...[
             NrCard(
+              depth: NrDepth.flat,
               child: Column(children: [
                 if (status == 'pending') ...[
-                  const LinearProgressIndicator(),
+                  NrPulseDot(color: nr.warning, size: 14),
                   const SizedBox(height: NrSpace.md),
                   Text('Esperando al supervisor…', style: NrText.headline(context)),
                   Text('Te avisamos aquí en cuanto decida.', style: NrText.bodySm(context)),
                 ] else if (status == 'rejected') ...[
-                  Icon(Icons.block, color: nr.danger, size: 32),
+                  Icon(Icons.block_rounded, color: nr.danger, size: 32),
                   Text('Rechazada${request?['decided_by'] != null ? ' por ${request!['decided_by']}' : ''}', style: NrText.headline(context)),
                   if (request?['decision_comment'] != null) Text('${request!['decision_comment']}', style: NrText.bodySm(context)),
                 ] else
@@ -170,15 +181,14 @@ class _AuthorizationSheetState extends ConsumerState<AuthorizationSheet> {
               ]),
             ),
             const SizedBox(height: NrSpace.md),
-            OutlinedButton(onPressed: () => Navigator.of(context).pop(), child: Text(status == 'pending' ? 'Cancelar espera' : 'Cerrar')),
+            NrButton(variant: NrButtonVariant.secondary, onPressed: () => Navigator.of(context).pop(), label: status == 'pending' ? 'Cancelar espera' : 'Cerrar'),
           ] else ...[
-            SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(value: false, label: Text('Pedir a distancia'), icon: Icon(Icons.send_outlined)),
-                ButtonSegment(value: true, label: Text('Autorizar aquí'), icon: Icon(Icons.pin_outlined)),
-              ],
-              selected: {onSite},
-              onSelectionChanged: (v) => setState(() => onSite = v.first),
+            NrSegmented<bool>(
+              values: const [false, true],
+              labels: const ['A distancia', 'Aquí mismo'],
+              icons: const [Icons.send_rounded, Icons.pin_rounded],
+              selected: onSite,
+              onChanged: (v) => setState(() => onSite = v),
             ),
             const SizedBox(height: NrSpace.lg),
             if (!onSite)
@@ -190,16 +200,18 @@ class _AuthorizationSheetState extends ConsumerState<AuthorizationSheet> {
             ],
             if (error != null) ...[
               const SizedBox(height: NrSpace.md),
-              Text(error!, style: NrText.bodySm(context).copyWith(color: nr.danger)),
+              NrBanner(message: error!, tone: NrTone.danger, icon: Icons.error_outline_rounded),
             ],
             const SizedBox(height: NrSpace.lg),
             Row(children: [
-              Expanded(child: OutlinedButton(onPressed: busy ? null : () => Navigator.of(context).pop(), child: const Text('Cancelar'))),
+              Expanded(child: NrButton(label: 'Cancelar', variant: NrButtonVariant.secondary, onPressed: busy ? null : () => Navigator.of(context).pop())),
               const SizedBox(width: NrSpace.md),
               Expanded(
-                child: FilledButton(
-                  onPressed: busy ? null : (onSite ? _approveOnSite : _askRemote),
-                  child: Text(onSite ? 'Aprobar' : 'Pedir'),
+                child: NrButton(
+                  busy: busy,
+                  icon: onSite ? Icons.check_rounded : Icons.send_rounded,
+                  onPressed: onSite ? _approveOnSite : _askRemote,
+                  label: onSite ? 'Aprobar' : 'Pedir',
                 ),
               ),
             ]),

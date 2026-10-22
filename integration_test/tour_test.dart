@@ -13,6 +13,7 @@ import 'package:nori_mobile/core/db/local_db.dart';
 import 'package:nori_mobile/core/providers.dart';
 import 'package:nori_mobile/core/router.dart';
 import 'package:nori_mobile/features/auth/auth_pages.dart';
+import 'package:nori_mobile/features/collections/collection_page.dart';
 import 'package:nori_mobile/features/collections/tender_sheet.dart';
 import 'package:nori_mobile/features/route/route_repo.dart';
 import 'package:nori_mobile/features/route/visit_page.dart';
@@ -26,6 +27,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const _only = String.fromEnvironment('TOUR_ONLY');
 const _themes = String.fromEnvironment('TOUR_THEMES', defaultValue: 'light,dark');
+
+// Sin sesión en el equipo (flutter test desinstala la app al terminar), se
+// entra con estos datos; tool/tour.sh los toma del entorno.
+const _server = String.fromEnvironment('TOUR_SERVER');
+const _user = String.fromEnvironment('TOUR_USER');
+const _password = String.fromEnvironment('TOUR_PASSWORD');
 
 Map<String, dynamic> _stop(int id, int seq, String name, String status, String label, {String? sale, String? addr, List<String>? window}) => {
       'id': id,
@@ -131,12 +138,21 @@ void main() {
       await wait(1600);
     }
 
-    await wait(4000);
+    await wait(3000);
+    if (container.read(authProvider).status == AuthStatus.signedOut && _server.isNotEmpty) {
+      await container.read(authProvider.notifier).login(server: _server, username: _user, password: _password);
+      await wait(2000);
+    }
+    // Recién instalada, la app baja los catálogos: se espera a tener clientes y artículos.
+    for (var i = 0; i < 90 && (await db.count('customers') == 0 || await db.count('items') == 0 || container.read(syncStatusProvider).syncing); i++) {
+      await wait(1000);
+    }
     final router = container.read(routerProvider);
     final nav = router.routerDelegate.navigatorKey;
-    final customers = await db.search('customers', '', limit: 5);
+    final customers = await db.search('customers', '', limit: 300);
+    customers.sort((a, b) => (double.tryParse('${b['balance']}') ?? 0).compareTo(double.tryParse('${a['balance']}') ?? 0));
     final items = await db.search('items', '', limit: 6);
-    final customer = customers.firstWhere((c) => c['balance'] != null, orElse: () => customers.first);
+    final customer = customers.first;
 
     Future<void> push(Widget page) async {
       nav.currentState!.push(MaterialPageRoute<void>(builder: (_) => page));
@@ -209,6 +225,10 @@ void main() {
       await shot('09_clientes_$t');
       router.push('/customers/${customer['id']}');
       await shot('10_cliente_$t');
+      pop();
+      await wait(400);
+      await push(CollectionPage(customerId: (customer['id'] as num).toInt(), customerName: '${customer['trade_name'] ?? customer['name']}', tenderTypes: asList(_sampleDay['tenders'])));
+      await shot('10b_cobranza_$t');
       pop();
       await wait(400);
 

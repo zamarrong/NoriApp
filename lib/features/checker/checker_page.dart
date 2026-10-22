@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -128,7 +127,8 @@ class _CheckerPageState extends ConsumerState<CheckerPage> {
     if (!mounted) return;
     if (item == null) {
       setState(() => _loading = false);
-      showSnack(context, 'No se encontró el código $code');
+      NrHaptics.warning();
+      showSnack(context, 'No se encontró el código $code', tone: NrTone.danger);
       return;
     }
     _text.text = '';
@@ -160,7 +160,7 @@ class _CheckerPageState extends ConsumerState<CheckerPage> {
     if (code == _lastCode && now.difference(_lastAt) < const Duration(seconds: 2)) return;
     _lastCode = code;
     _lastAt = now;
-    HapticFeedback.selectionClick();
+    NrHaptics.tap();
     _byCode(code);
   }
 
@@ -169,53 +169,70 @@ class _CheckerPageState extends ConsumerState<CheckerPage> {
     if (c == null) return;
     final item = {...c.data}..removeWhere((k, _) => const ['prices', 'stock', 'images', 'units'].contains(k));
     ref.read(pendingSaleItemsProvider.notifier).update((l) => [...l, item]);
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text('${item['name']} agregado a la venta'),
-        action: SnackBarAction(label: 'Ir a vender', onPressed: () => context.go('/sell')),
-      ));
+    NrHaptics.success();
+    showSnack(context, '${item['name']} agregado a la venta', tone: NrTone.success, action: 'Ir a vender', onAction: () => context.go('/sell'));
   }
 
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
     final pending = ref.watch(pendingSaleItemsProvider).length;
+    final nr = context.nr;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Checador de precios'),
         actions: [
           IconButton(
-            icon: Icon(_continuous ? Icons.videocam_off_outlined : Icons.center_focus_strong),
+            icon: Icon(_continuous ? Icons.videocam_off_rounded : Icons.center_focus_strong_rounded),
             tooltip: _continuous ? 'Apagar escaneo continuo' : 'Escaneo continuo',
             onPressed: _toggleContinuous,
           ),
         ],
       ),
       body: Column(children: [
-        if (_continuous && _scanner != null)
-          SizedBox(
-            height: 200,
-            child: Stack(fit: StackFit.expand, children: [
-              MobileScanner(controller: _scanner!, onDetect: _onDetect),
-              Center(
-                child: Container(
-                  width: 240,
-                  height: 110,
-                  decoration: BoxDecoration(border: Border.all(color: Colors.white70, width: 2), borderRadius: BorderRadius.circular(NrRadius.lg)),
-                ),
-              ),
-            ]),
-          ),
+        AnimatedSize(
+          duration: NrMotion.base,
+          curve: NrMotion.ease,
+          child: _continuous && _scanner != null
+              ? Padding(
+                  padding: const EdgeInsets.fromLTRB(NrSpace.gutter, 0, NrSpace.gutter, NrSpace.sm),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(NrRadius.xxl),
+                    child: SizedBox(
+                      height: 190,
+                      child: Stack(fit: StackFit.expand, children: [
+                        MobileScanner(controller: _scanner!, onDetect: _onDetect),
+                        Center(
+                          child: Container(
+                            width: 240,
+                            height: 104,
+                            decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 2.5), borderRadius: BorderRadius.circular(NrRadius.lg)),
+                          ),
+                        ),
+                        Positioned(
+                          left: 12,
+                          top: 12,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(NrRadius.pill)),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              NrPulseDot(color: nr.danger, size: 7),
+                              const Text('Escaneo continuo', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                            ]),
+                          ),
+                        ),
+                      ]),
+                    ),
+                  ),
+                )
+              : const SizedBox(width: double.infinity),
+        ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(NrSpace.gutter, NrSpace.sm, NrSpace.gutter, NrSpace.sm),
-          child: TextField(
+          padding: const EdgeInsets.fromLTRB(NrSpace.gutter, 0, NrSpace.gutter, NrSpace.sm),
+          child: NrSearchField(
             controller: _text,
-            decoration: InputDecoration(
-              hintText: 'Código, nombre o código de barras',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: IconButton(icon: const Icon(Icons.qr_code_scanner), tooltip: 'Escanear', onPressed: _scanOnce),
-            ),
+            hint: 'Código, nombre o código de barras',
+            onScan: _scanOnce,
             onChanged: (v) {
               _debounce?.cancel();
               _debounce = Timer(const Duration(milliseconds: 250), () => _search(v));
@@ -229,41 +246,79 @@ class _CheckerPageState extends ConsumerState<CheckerPage> {
             },
           ),
         ),
-        if (_loading) const LinearProgressIndicator(),
+        SizedBox(height: 2, child: _loading ? LinearProgressIndicator(color: nr.accent, backgroundColor: Colors.transparent) : null),
         Expanded(
-          child: _results.isNotEmpty
-              ? ListView.separated(
-                  itemCount: _results.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (_, i) {
-                    final it = _results[i];
-                    return NrListRow(title: '${it['name']}', subtitle: '${it['code']}', onTap: () => _show(it));
-                  },
-                )
-              : _check == null
-                  ? NrEmpty(
-                      icon: Icons.qr_code_2,
-                      title: 'Escanea o busca un artículo',
-                      message: 'Verás su imagen, precios y existencias.',
-                      action: 'Escanear',
-                      onAction: _scanOnce,
-                    )
-                  : _CheckResult(check: _check!),
+          child: NrSwitcher(
+            child: _results.isNotEmpty
+                ? ListView.builder(
+                    key: const ValueKey('results'),
+                    padding: const EdgeInsets.fromLTRB(NrSpace.gutter, NrSpace.sm, NrSpace.gutter, NrSpace.xl),
+                    itemCount: _results.length,
+                    itemBuilder: (_, i) {
+                      final it = _results[i];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: NrSpace.sm),
+                        child: NrCard(
+                          padding: const EdgeInsets.all(NrSpace.md),
+                          onTap: () => _show(it),
+                          child: Row(children: [
+                            NrThumb(name: '${it['name']}', url: it['image_url'] as String?, size: 44),
+                            const SizedBox(width: NrSpace.md),
+                            Expanded(
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text('${it['name']}', style: NrText.headline(context).copyWith(fontSize: 15), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                Text('${it['code']}', style: NrText.caption(context)),
+                              ]),
+                            ),
+                            Icon(Icons.chevron_right_rounded, color: nr.muted),
+                          ]),
+                        ),
+                      );
+                    },
+                  )
+                : _check == null
+                    ? NrEmpty(
+                        key: const ValueKey('empty'),
+                        icon: Icons.qr_code_scanner_rounded,
+                        title: 'Escanea o busca un artículo',
+                        message: 'Verás su imagen, precios por lista y existencias por almacén.',
+                        action: 'Escanear',
+                        onAction: _scanOnce,
+                      )
+                    : _CheckResult(key: ValueKey(_check!.data['id']), check: _check!),
+          ),
         ),
       ]),
       bottomNavigationBar: _check == null || !(session?.canFreeSell ?? false)
           ? null
-          : NrBottomAction(
-              label: pending > 0 ? 'Agregar a la venta ($pending)' : 'Agregar a la venta',
-              leading: const Icon(Icons.add_shopping_cart),
-              onPressed: _addToSale,
+          : NrBottomBar(
+              child: Row(children: [
+                if (pending > 0) ...[
+                  NrSquareButton(icon: Icons.shopping_basket_rounded, tooltip: 'Ir a vender', size: NrTouch.comfy, onPressed: () => context.go('/sell')),
+                  const SizedBox(width: NrSpace.md),
+                ],
+                Expanded(
+                  child: NrButton(
+                    label: 'Agregar a la venta',
+                    icon: Icons.add_shopping_cart_rounded,
+                    onPressed: _addToSale,
+                    trailing: pending == 0
+                        ? null
+                        : Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(color: nr.onAccent.withValues(alpha: 0.22), borderRadius: BorderRadius.circular(NrRadius.pill)),
+                            child: Text('$pending', style: NrText.caption(context).copyWith(color: nr.onAccent, fontWeight: FontWeight.w700)),
+                          ),
+                  ),
+                ),
+              ]),
             ),
     );
   }
 }
 
 class _CheckResult extends StatelessWidget {
-  const _CheckResult({required this.check});
+  const _CheckResult({super.key, required this.check});
 
   final PriceCheck check;
 
@@ -280,79 +335,134 @@ class _CheckResult extends StatelessWidget {
     final prices = asList(d['prices']);
     final stock = asList(d['stock']);
     final tax = Dec.tryParse('${d['tax_percent'] ?? ''}');
-    final byList = <String, List<Map<String, dynamic>>>{};
-    for (final p in prices) {
-      byList.putIfAbsent('${p['price_list']}', () => []).add(p);
-    }
+    final main = prices.firstOrNull;
+    final maxAvail = stock.fold<double>(1, (m, s) => Dec.parse(s['available']).toDouble() > m ? Dec.parse(s['available']).toDouble() : m);
+    final totalAvail = stock.fold(Dec.zero, (t, s) => t + Dec.parse(s['available']).max(Dec.zero));
 
-    return ListView(padding: const EdgeInsets.fromLTRB(NrSpace.gutter, 0, NrSpace.gutter, NrSpace.xl), children: [
+    return ListView(padding: const EdgeInsets.fromLTRB(NrSpace.gutter, NrSpace.sm, NrSpace.gutter, NrSpace.xxxl), children: [
       if (check.offline)
         const Padding(
           padding: EdgeInsets.only(bottom: NrSpace.md),
-          child: NrPill('Datos guardados: precio sin impuestos y existencia de la última sincronización', tone: NrTone.warning, icon: Icons.cloud_off),
+          child: NrBanner(message: 'Datos guardados: precio sin impuestos y existencia de la última sincronización.'),
         ),
-      if (imageUrls.isNotEmpty) _Gallery(urls: imageUrls),
-      const SizedBox(height: NrSpace.md),
-      Text('${d['name']}', style: NrText.title(context)),
-      const SizedBox(height: NrSpace.xs),
-      Wrap(spacing: NrSpace.sm, runSpacing: NrSpace.xs, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        Text('${d['code']}', style: NrText.bodySm(context)),
-        if (d['is_package'] == true) const NrPill('Paquete', tone: NrTone.accent),
-        if (d['is_active'] == false) const NrPill('Inactivo', tone: NrTone.danger),
-        for (final b in barcodes) NrPill(b, icon: Icons.qr_code),
-      ]),
-      if (prices.isNotEmpty) ...[
-        NrSectionHeader('Precios'),
-        NrGroup(children: [
-          for (final e in byList.entries)
-            for (final p in e.value)
-              NrListRow(
-                title: e.key,
-                subtitle: p['uom'] == null ? null : 'Por ${'${p['uom']}'.toLowerCase()}',
-                trailing: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                  NrMoney(p['price_with_tax'] ?? p['price'], size: 18),
-                  Text(
-                    p['price_with_tax'] != null
-                        ? 'Con impuestos${tax == null || tax.isZero ? '' : ' (${tax.toQty()} %)'} · antes ${money(p['price'])}'
-                        : 'Sin impuestos',
-                    style: NrText.caption(context),
-                  ),
+      NrEntrance(
+        child: NrCard(
+          depth: NrDepth.floating,
+          radius: NrRadius.hero,
+          padding: EdgeInsets.zero,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (imageUrls.isNotEmpty) _Gallery(urls: imageUrls, name: '${d['name']}') else Container(height: 120, color: nr.night ? nr.raised : nr.canvas, child: Center(child: NrThumb(name: '${d['name']}', size: 72))),
+            Padding(
+              padding: const EdgeInsets.all(NrSpace.lg),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Text('${d['name']}', style: NrText.title(context)),
+                const SizedBox(height: NrSpace.xs),
+                Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                  NrPill('${d['code']}', icon: Icons.tag_rounded),
+                  if (d['is_package'] == true) const NrPill('Paquete', tone: NrTone.accent),
+                  if (d['is_active'] == false) const NrPill('Inactivo', tone: NrTone.danger, dot: true),
+                  for (final b in barcodes.take(3)) NrPill(b, icon: Icons.qr_code_rounded),
                 ]),
-              ),
-        ]),
-      ] else ...[
-        NrSectionHeader('Precios'),
-        const NrCard(child: Text('Sin precio en tus listas.')),
-      ],
-      NrSectionHeader('Existencias', count: stock.length),
-      if (stock.isEmpty)
-        const NrCard(child: Text('Sin existencia registrada en tus almacenes.'))
-      else
+                if (main != null) ...[
+                  const SizedBox(height: NrSpace.lg),
+                  Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('${main['price_list']}'.toUpperCase(), style: NrText.eyebrow(context)),
+                        const SizedBox(height: 4),
+                        NrAmount(main['price_with_tax'] ?? main['price'], size: 38, animate: true),
+                        Text(
+                          [
+                            if (main['uom'] != null) 'por ${'${main['uom']}'.toLowerCase()}',
+                            main['price_with_tax'] != null ? 'con impuestos${tax == null || tax.isZero ? '' : ' (${tax.toQty()} %)'}' : 'sin impuestos',
+                          ].join(' · '),
+                          style: NrText.caption(context),
+                        ),
+                      ]),
+                    ),
+                    Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                      Text('DISPONIBLE', style: NrText.eyebrow(context)),
+                      const SizedBox(height: 4),
+                      Text(totalAvail.toQty(), style: NrText.stat(context).copyWith(color: totalAvail.isZero ? nr.danger : nr.success)),
+                    ]),
+                  ]),
+                ],
+              ]),
+            ),
+          ]),
+        ),
+      ),
+      if (prices.length > 1) ...[
+        NrSectionHeader('Otras listas', count: prices.length - 1),
         NrGroup(children: [
-          for (final s in stock)
+          for (final p in prices.skip(1))
             NrListRow(
-              leading: Icon(s['is_working'] == true ? Icons.warehouse : Icons.warehouse_outlined, color: s['is_working'] == true ? nr.accent : nr.secondary),
-              title: '${asMap(s['warehouse'])['name'] ?? 'Almacén ${s['warehouse_id']}'}${s['is_working'] == true ? ' · de trabajo' : ''}',
-              subtitle: [
-                'Existencia ${Dec.parse(s['on_hand']).toQty()}',
-                'Comprometido ${Dec.parse(s['committed']).toQty()}',
-                if (asMap(s['bin_location']).isNotEmpty) 'Ubicación ${asMap(s['bin_location'])['code']}',
-              ].join(' · '),
+              dense: true,
+              title: '${p['price_list']}',
+              subtitle: p['uom'] == null ? null : 'Por ${'${p['uom']}'.toLowerCase()}',
               trailing: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Text(Dec.parse(s['available']).toQty(),
-                    style: NrText.money(context, size: 18).copyWith(color: Dec.parse(s['available']) <= Dec.zero ? nr.danger : null)),
-                Text('Disponible', style: NrText.caption(context)),
+                NrMoney(p['price_with_tax'] ?? p['price'], size: 16, weight: FontWeight.w700),
+                if (p['price_with_tax'] != null) Text('antes ${money(p['price'])}', style: NrText.caption(context)),
               ]),
             ),
         ]),
+      ] else if (prices.isEmpty) ...[
+        NrSectionHeader('Precios'),
+        const NrBanner(message: 'Sin precio en tus listas.', tone: NrTone.neutral, icon: Icons.sell_outlined),
+      ],
+      NrSectionHeader('Existencias', count: stock.length),
+      if (stock.isEmpty)
+        const NrBanner(message: 'Sin existencia registrada en tus almacenes.', tone: NrTone.neutral, icon: Icons.inventory_2_outlined)
+      else
+        NrCard(
+          padding: const EdgeInsets.symmetric(vertical: NrSpace.xs),
+          child: Column(children: [
+            for (final (i, s) in stock.take(30).indexed) ...[
+              if (i > 0) Divider(height: 1, indent: NrSpace.lg, color: nr.border),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: NrSpace.lg, vertical: NrSpace.md),
+                child: Row(children: [
+                  Icon(s['is_working'] == true ? Icons.warehouse_rounded : Icons.warehouse_outlined, color: s['is_working'] == true ? nr.accent : nr.muted, size: 20),
+                  const SizedBox(width: NrSpace.md),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        Flexible(
+                          child: Text('${asMap(s['warehouse'])['name'] ?? 'Almacén ${s['warehouse_id']}'}',
+                              style: NrText.headline(context).copyWith(fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ),
+                        if (s['is_working'] == true) ...[const SizedBox(width: 6), const NrPill('De trabajo', tone: NrTone.accent)],
+                      ]),
+                      const SizedBox(height: 6),
+                      NrMeter(value: Dec.parse(s['available']).toDouble() / maxAvail, height: 5, color: Dec.parse(s['available']) <= Dec.zero ? nr.danger : nr.success),
+                      const SizedBox(height: 4),
+                      Text(
+                        [
+                          'Existencia ${Dec.parse(s['on_hand']).toQty()}',
+                          'Comprometido ${Dec.parse(s['committed']).toQty()}',
+                          if (asMap(s['bin_location']).isNotEmpty) 'Ubicación ${asMap(s['bin_location'])['code']}',
+                        ].join(' · '),
+                        style: NrText.caption(context).copyWith(fontSize: 11),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(width: NrSpace.md),
+                  Text(Dec.parse(s['available']).toQty(),
+                      style: NrText.money(context, size: 20, weight: FontWeight.w700).copyWith(color: Dec.parse(s['available']) <= Dec.zero ? nr.danger : null)),
+                ]),
+              ),
+            ],
+          ]),
+        ),
     ]);
   }
 }
 
 class _Gallery extends StatefulWidget {
-  const _Gallery({required this.urls});
+  const _Gallery({required this.urls, required this.name});
 
   final List<String> urls;
+  final String name;
 
   @override
   State<_Gallery> createState() => _GalleryState();
@@ -366,9 +476,9 @@ class _GalleryState extends State<_Gallery> {
     final nr = context.nr;
     return Column(children: [
       ClipRRect(
-        borderRadius: BorderRadius.circular(NrRadius.xxl),
+        borderRadius: BorderRadius.zero,
         child: Container(
-          height: 220,
+          height: 240,
           color: nr.raised,
           child: PageView(
             onPageChanged: (i) => setState(() => page = i),
@@ -377,7 +487,7 @@ class _GalleryState extends State<_Gallery> {
                 Image.network(
                   u,
                   fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) => Icon(Icons.image_not_supported_outlined, size: 48, color: nr.secondary),
+                  errorBuilder: (_, _, _) => Center(child: NrThumb(name: widget.name, size: 96)),
                 ),
             ],
           ),

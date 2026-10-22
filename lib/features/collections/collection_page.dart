@@ -11,6 +11,7 @@ import '../../core/widgets/pickers.dart';
 import '../printing/printer.dart';
 import '../printing/templates.dart';
 import 'allocation.dart';
+import 'tender_sheet.dart' show tenderIcon;
 
 /// Cobranza: contra facturas abiertas (las más vencidas primero) o pago a cuenta.
 /// Con [visitId] se registra como cobro de la visita de ruta.
@@ -113,28 +114,48 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     await autoPrint(context, ref, 'payment', (b) => paymentTicket(receipt, b));
     if (!mounted) return;
     if (r.queued) {
-      showSnack(context, 'Cobro guardado sin señal; se enviará solo.');
+      NrHaptics.success();
+      showSnack(context, 'Cobro guardado sin señal; se enviará solo.', tone: NrTone.warning);
       Navigator.of(context).pop(true);
       return;
     }
-    await showDialog<void>(
+    NrHaptics.success();
+    final change = Dec.parse(payment['change'] ?? payment['change_total']);
+    await showModalBottomSheet<void>(
       context: context,
-      builder: (dialogCtx) => AlertDialog(
-        icon: Icon(Icons.check_circle, color: context.nr.success, size: 40),
-        title: Text('Cobro de ${money(payment['total'] ?? paid)}'),
-        content: Text(Dec.parse(payment['change'] ?? payment['change_total']) > Dec.zero
-            ? 'Cambio: ${money(payment['change'] ?? payment['change_total'])}'
-            : 'Registrado.'),
-        actions: [
-          if (ref.read(printerSettingsProvider).configured)
-            TextButton(onPressed: () => printTicket(dialogCtx, ref, (b) => paymentTicket(receipt, b)), child: const Text('Imprimir')),
-          if (id != null)
-            TextButton(
-              onPressed: () => shareDocument(dialogCtx, ref, kind: 'payment', id: id, title: 'Recibo de pago'),
-              child: const Text('Enviar recibo'),
-            ),
-          FilledButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('Listo')),
-        ],
+      showDragHandle: false,
+      builder: (dialogCtx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(NrSpace.xl, NrSpace.xl, NrSpace.xl, NrSpace.lg),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const Center(child: NrSuccessMark(size: 76)),
+            const SizedBox(height: NrSpace.sm),
+            Text('Cobro registrado', textAlign: TextAlign.center, style: NrText.title(dialogCtx)),
+            const SizedBox(height: NrSpace.md),
+            Center(child: NrAmount(payment['total'] ?? paid.toFixed(2), size: 40, animate: true)),
+            if (change > Dec.zero) ...[
+              const SizedBox(height: NrSpace.sm),
+              Center(child: NrPill('Cambio ${money(change)}', tone: NrTone.success, large: true, icon: Icons.savings_rounded)),
+            ],
+            const SizedBox(height: NrSpace.xxl),
+            Row(children: [
+              if (ref.read(printerSettingsProvider).configured)
+                Expanded(child: NrButton(label: 'Imprimir', icon: Icons.print_rounded, variant: NrButtonVariant.secondary, onPressed: () => printTicket(dialogCtx, ref, (b) => paymentTicket(receipt, b)))),
+              if (ref.read(printerSettingsProvider).configured && id != null) const SizedBox(width: NrSpace.md),
+              if (id != null)
+                Expanded(
+                  child: NrButton(
+                    label: 'Enviar recibo',
+                    icon: Icons.ios_share_rounded,
+                    variant: NrButtonVariant.secondary,
+                    onPressed: () => shareDocument(dialogCtx, ref, kind: 'payment', id: id, title: 'Recibo de pago'),
+                  ),
+                ),
+            ]),
+            const SizedBox(height: NrSpace.md),
+            NrButton(label: 'Listo', onPressed: () => Navigator.pop(dialogCtx)),
+          ]),
+        ),
       ),
     );
     if (mounted) Navigator.of(context).pop(true);
@@ -142,60 +163,124 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
 
   @override
   Widget build(BuildContext context) {
+    final nr = context.nr;
     final paid = Dec.tryParse(amount.text) ?? Dec.zero;
     final (applied, leftover) = allocatePayment(paid, docs);
+    final owed = docs.fold(Dec.zero, (s, d) => s + Dec.parse(d['balance']).max(Dec.zero));
+    final overdue = docs.where((d) => (d['days_overdue'] as num? ?? 0) > 0).length;
     return Scaffold(
       appBar: AppBar(title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('Cobrar'),
-        Text(widget.customerName, style: NrText.caption(context)),
+        Text(widget.customerName, style: NrText.caption(context), maxLines: 1, overflow: TextOverflow.ellipsis),
       ])),
       body: loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(padding: const EdgeInsets.all(NrSpace.gutter), children: [
-              TextField(
-                controller: amount,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                style: NrText.money(context, size: 28),
-                decoration: const InputDecoration(labelText: 'Monto recibido', prefixText: r'$ '),
-                onChanged: (_) => setState(() {}),
+          ? const NrSkeletonList(header: true, count: 3)
+          : ListView(padding: const EdgeInsets.fromLTRB(NrSpace.gutter, NrSpace.xs, NrSpace.gutter, NrSpace.xxxl), children: [
+              NrCard(
+                depth: NrDepth.floating,
+                radius: NrRadius.hero,
+                padding: const EdgeInsets.all(NrSpace.xl),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Row(children: [
+                    Expanded(child: Text('DEBE', style: NrText.eyebrow(context))),
+                    if (overdue > 0) NrPill('$overdue vencido${overdue == 1 ? '' : 's'}', tone: NrTone.danger, dot: true),
+                  ]),
+                  const SizedBox(height: 4),
+                  NrAmount(owed, size: 22, animate: true, color: overdue > 0 ? nr.danger : null),
+                  const SizedBox(height: NrSpace.lg),
+                  TextField(
+                    controller: amount,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    style: NrText.money(context, size: 34, weight: FontWeight.w700),
+                    decoration: const InputDecoration(labelText: 'Monto recibido', prefixText: r'$ '),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  if (!owed.isZero) ...[
+                    const SizedBox(height: NrSpace.sm),
+                    Wrap(spacing: NrSpace.sm, children: [
+                      ChoiceChip(label: const Text('Todo'), selected: paid == owed, onSelected: (_) => setState(() => amount.text = owed.toFixed(2))),
+                      if (docs.isNotEmpty && Dec.parse(docs.first['balance']) < owed)
+                        ChoiceChip(
+                          label: Text('Solo ${docs.first['folio']}'),
+                          selected: paid == Dec.parse(docs.first['balance']),
+                          onSelected: (_) => setState(() => amount.text = Dec.parse(docs.first['balance']).toFixed(2)),
+                        ),
+                    ]),
+                  ],
+                ]),
               ),
-              const SizedBox(height: NrSpace.md),
-              Wrap(spacing: NrSpace.sm, runSpacing: NrSpace.sm, children: [
-                for (final t in tenderTypes)
-                  ChoiceChip(label: Text('${t['name']}'), selected: tender?['id'] == t['id'], onSelected: (_) => setState(() => tender = t)),
-              ]),
+              NrSectionHeader('Forma de pago'),
+              SizedBox(
+                height: 76,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: tenderTypes.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: NrSpace.sm),
+                  itemBuilder: (_, i) {
+                    final t = tenderTypes[i];
+                    final on = tender?['id'] == t['id'];
+                    return SizedBox(
+                      width: 112,
+                      child: NrCard(
+                        padding: const EdgeInsets.all(NrSpace.md),
+                        color: on ? nr.accentSoft : null,
+                        borderColor: on ? nr.accent : null,
+                        onTap: () {
+                          NrHaptics.tap();
+                          setState(() => tender = t);
+                        },
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Icon(tenderIcon(t), size: 22, color: on ? (nr.night ? nr.link : nr.accent) : nr.secondary),
+                          const Spacer(),
+                          Text('${t['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: NrText.label(context).copyWith(fontWeight: FontWeight.w600)),
+                        ]),
+                      ),
+                    );
+                  },
+                ),
+              ),
               if (tender?['requires_reference'] == true) ...[
                 const SizedBox(height: NrSpace.md),
-                TextField(controller: reference, decoration: const InputDecoration(labelText: 'Referencia')),
+                TextField(controller: reference, decoration: const InputDecoration(labelText: 'Referencia', prefixIcon: Icon(Icons.tag_rounded))),
               ],
-              NrSectionHeader('Documentos abiertos', count: docs.length),
-              if (offlineData) Padding(
-                padding: const EdgeInsets.only(bottom: NrSpace.sm),
-                child: Text('Saldos guardados; pueden no estar al día.', style: NrText.caption(context).copyWith(color: context.nr.warning)),
-              ),
+              NrSectionHeader('Se aplica a', count: docs.length),
+              if (offlineData) const Padding(padding: EdgeInsets.only(bottom: NrSpace.sm), child: NrBanner(message: 'Saldos guardados; pueden no estar al día.')),
               if (docs.isEmpty)
-                const NrCard(child: Text('Sin documentos abiertos: el cobro queda como pago a cuenta.'))
+                const NrCard(depth: NrDepth.flat, child: NrEmpty(compact: true, icon: Icons.account_balance_wallet_rounded, title: 'Sin documentos abiertos', message: 'El cobro queda como pago a cuenta.'))
               else
                 NrGroup(children: [
                   for (final d in docs)
-                    NrListRow(
-                      title: '${d['folio']}',
-                      subtitle: [
-                        'Saldo ${money(d['balance'])}',
-                        if (d['due_date'] != null) 'vence ${d['due_date']}',
-                        if ((d['days_overdue'] as num? ?? 0) > 0) '${d['days_overdue']} días vencido',
-                      ].join(' · '),
-                      trailing: applied[(d['id'] as num).toInt()] == null
-                          ? null
-                          : NrPill(money(applied[(d['id'] as num).toInt()]), tone: NrTone.success),
-                    ),
+                    Builder(builder: (context) {
+                      final a = applied[(d['id'] as num).toInt()];
+                      final balance = Dec.parse(d['balance']);
+                      final full = a != null && a >= balance;
+                      return NrListRow(
+                        leading: AnimatedContainer(
+                          duration: NrMotion.base,
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: a == null ? Colors.transparent : (full ? nr.success : nr.warning),
+                            border: a == null ? Border.all(color: nr.borderStrong, width: 1.5) : null,
+                          ),
+                          child: a == null ? null : Icon(full ? Icons.check_rounded : Icons.more_horiz_rounded, size: 16, color: Colors.white),
+                        ),
+                        title: '${d['folio']}',
+                        subtitle: [
+                          'Saldo ${money(d['balance'])}',
+                          if ((d['days_overdue'] as num? ?? 0) > 0) '${d['days_overdue']} días vencido' else if (d['due_date'] != null) 'vence ${d['due_date']}',
+                        ].join(' · '),
+                        trailing: a == null ? null : NrMoney(a, weight: FontWeight.w700, color: full ? nr.success : nr.warning),
+                      );
+                    }),
                 ]),
               if (leftover > Dec.zero) ...[
                 const SizedBox(height: NrSpace.md),
-                NrCard(child: Text('Sobran ${money(leftover)}: quedan como saldo a favor (pago a cuenta).')),
+                NrBanner(message: 'Sobran ${money(leftover)}: quedan como saldo a favor (pago a cuenta).', tone: NrTone.accent, icon: Icons.info_outline_rounded),
               ],
             ]),
-      bottomNavigationBar: NrBottomAction(label: paid > Dec.zero ? 'Cobrar ${money(paid)}' : 'Cobrar', busy: busy, onPressed: paid > Dec.zero ? _submit : null),
+      bottomNavigationBar: NrBottomAction(label: paid > Dec.zero ? 'Cobrar ${money(paid)}' : 'Cobrar', icon: Icons.check_rounded, busy: busy, onPressed: paid > Dec.zero ? _submit : null),
     );
   }
 }
