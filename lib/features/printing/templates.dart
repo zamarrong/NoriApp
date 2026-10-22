@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/util/decimal.dart';
+import 'cfdi.dart';
 import 'escpos.dart';
 
 /// Formatos fijos de impresión (no los del diseñador de la web): venta
@@ -11,7 +12,7 @@ import 'escpos.dart';
 
 /// Lo que va en todos los formatos: la empresa, quién imprime y el pie.
 class TicketBrand {
-  const TicketBrand({this.companyName, this.logo, this.seller, this.footer = '', this.code = 'qr', this.columns = 32});
+  const TicketBrand({this.companyName, this.logo, this.seller, this.footer = '', this.code = 'qr', this.columns = 32, this.fullSeals = true});
 
   final String? companyName;
   final img.Image? logo;
@@ -21,6 +22,9 @@ class TicketBrand {
   /// 'qr', 'barcode' o 'none': el código del folio al final.
   final String code;
   final int columns;
+
+  /// CFDI: sellos y cadena original completos (si no, abreviados).
+  final bool fullSeals;
 }
 
 /// Clave → tipo de impresión automática ([PrinterSettings.auto]).
@@ -33,6 +37,9 @@ const printKinds = {
   'settlement': 'Liquidación de ruta',
   'load': 'Hoja de carga',
 };
+
+/// Tipos que pueden ser CFDI (los demás nunca se piden a `/cfdi`).
+bool mayBeCfdi(String? documentType) => !const {'quotation', 'sales_order', 'order', 'pickup'}.contains(documentType);
 
 String printKindOf(String? documentType) => switch (documentType) {
       'sales_order' || 'order' => 'order',
@@ -172,8 +179,10 @@ void _footer(Ticket t, TicketBrand b, String? code) {
   }
 }
 
-/// Venta, pedido, cotización, devolución o recolección.
-Ticket documentTicket(PrintDoc d, TicketBrand b) {
+/// Venta, pedido, cotización, devolución o recolección. Con [cfdi] fiscal
+/// (empresa mexicana) sale como representación impresa del CFDI.
+Ticket documentTicket(PrintDoc d, TicketBrand b, {CfdiPrint? cfdi}) {
+  if (cfdi != null && cfdi.fiscal) return cfdiDocumentTicket(d, cfdi, b);
   final t = Ticket(b.columns);
   _header(t, b, _titles[d.type] ?? d.type.toUpperCase(), folio: d.folio, date: d.date, customer: d.customer, customerCode: d.customerCode);
   t.divider();
@@ -242,7 +251,9 @@ class PrintPayment {
   final Dec? balanceAfter;
 }
 
-Ticket paymentTicket(PrintPayment p, TicketBrand b) {
+/// Con [cfdi] fiscal sale como CFDI con complemento de pagos.
+Ticket paymentTicket(PrintPayment p, TicketBrand b, {CfdiPrint? cfdi}) {
+  if (cfdi != null && cfdi.fiscal) return cfdiPaymentTicket(p, cfdi, b);
   final t = Ticket(b.columns);
   _header(t, b, 'RECIBO DE COBRO', folio: p.folio, date: p.date, customer: p.customer);
   t.divider();

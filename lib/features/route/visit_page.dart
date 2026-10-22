@@ -13,7 +13,6 @@ import '../../core/widgets/pickers.dart';
 import '../../core/widgets/sync_indicator.dart';
 import '../collections/collection_page.dart';
 import '../collections/tender_sheet.dart';
-import '../printing/escpos.dart';
 import '../printing/printer.dart';
 import '../printing/templates.dart';
 import '../sales/cart.dart';
@@ -187,9 +186,10 @@ class _VisitPageState extends ConsumerState<VisitPage> {
               onCredit: kind == 'sale' && paid.isEmpty,
               balance: first?['balance'] == null ? null : Dec.parse(first!['balance']));
           if (!ctx.mounted) return true;
-          await autoPrint(ctx, ref, printKindOf(kind), (b) => documentTicket(printable, b));
+          final cfdi = cfdiLoader(ref, 'documents', (first?['id'] as num?)?.toInt(), enabled: mayBeCfdi(printable.type));
+          await autoPrint(ctx, ref, printKindOf(kind), (b) async => documentTicket(printable, b, cfdi: await cfdi()));
           if (first != null && ctx.mounted) {
-            await showDoneDialog(ctx, ref, '${result['message'] ?? 'Guardado'}', first, print: (b) => documentTicket(printable, b));
+            await showDoneDialog(ctx, ref, '${result['message'] ?? 'Guardado'}', first, print: (b) async => documentTicket(printable, b, cfdi: await cfdi()));
           }
           return true;
         },
@@ -501,7 +501,7 @@ Future<(int, String)?> pickReason(BuildContext context, List<Map<String, dynamic
 }
 
 /// Confirmación con la opción de compartir el PDF del documento o imprimirlo.
-Future<void> showDoneDialog(BuildContext context, WidgetRef ref, String message, Map<String, dynamic> doc, {Ticket Function(TicketBrand)? print, String? detail}) {
+Future<void> showDoneDialog(BuildContext context, WidgetRef ref, String message, Map<String, dynamic> doc, {TicketBuilder? print, String? detail}) {
   NrHaptics.success();
   final canPrint = print != null && ref.read(printerSettingsProvider).configured;
   return showModalBottomSheet<void>(

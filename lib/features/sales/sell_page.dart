@@ -448,13 +448,14 @@ Future<bool> startSaleDocument(BuildContext context, WidgetRef ref, Map<String, 
               : PrintDoc.fromApi(doc, tenders: paid, change: change, onCredit: onCredit);
         }
         if (!ctx.mounted) return true;
-        await autoPrint(ctx, ref, printKindOf(t.type), (b) => documentTicket(printable, b));
+        final cfdi = cfdiLoader(ref, 'documents', r.queued ? null : (asMap(unwrap(r.response))['id'] as num?)?.toInt(), enabled: mayBeCfdi(t.type));
+        await autoPrint(ctx, ref, printKindOf(t.type), (b) async => documentTicket(printable, b, cfdi: await cfdi()));
         if (!ctx.mounted) return true;
         if (r.queued) {
           showSnack(ctx, '${t.label} guardada sin señal; se enviará sola.');
         } else {
           final doc = asMap(unwrap(r.response));
-          await showDoneDialog(ctx, ref, '${t.label} ${doc['folio'] ?? ''}', doc, print: (b) => documentTicket(printable, b));
+          await showDoneDialog(ctx, ref, '${t.label} ${doc['folio'] ?? ''}', doc, print: (b) async => documentTicket(printable, b, cfdi: await cfdi()));
         }
         return true;
       },

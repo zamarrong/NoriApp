@@ -16,6 +16,7 @@ import '../../core/api/api_error.dart';
 import '../../core/design/design.dart';
 import '../../core/providers.dart';
 import '../sales/cart.dart';
+import 'cfdi.dart';
 import 'escpos.dart';
 import 'templates.dart';
 
@@ -32,6 +33,7 @@ class PrinterSettings {
     this.footer = '¡Gracias por su compra!',
     this.code = 'qr',
     this.auto = const {},
+    this.fullSeals = true,
   });
 
   /// MAC (Bluetooth clásico) o identificador BLE.
@@ -50,6 +52,9 @@ class PrinterSettings {
   /// Tipos que se imprimen solos al guardar ([printKinds]).
   final Set<String> auto;
 
+  /// CFDI: sellos completos (true) o abreviados.
+  final bool fullSeals;
+
   bool get configured => id != null && id!.isNotEmpty;
   int get columns => paperMm >= 80 ? 48 : 32;
 
@@ -64,6 +69,7 @@ class PrinterSettings {
     String? footer,
     String? code,
     Set<String>? auto,
+    bool? fullSeals,
   }) =>
       PrinterSettings(
         id: id ?? this.id,
@@ -76,6 +82,7 @@ class PrinterSettings {
         footer: footer ?? this.footer,
         code: code ?? this.code,
         auto: auto ?? this.auto,
+        fullSeals: fullSeals ?? this.fullSeals,
       );
 
   Map<String, dynamic> toJson() => {
@@ -89,6 +96,7 @@ class PrinterSettings {
         'footer': footer,
         'code': code,
         'auto': auto.toList(),
+        'full_seals': fullSeals,
       };
 
   factory PrinterSettings.fromJson(Map<String, dynamic> j) => PrinterSettings(
@@ -102,6 +110,7 @@ class PrinterSettings {
         footer: (j['footer'] as String?) ?? '',
         code: (j['code'] as String?) ?? 'qr',
         auto: {...((j['auto'] as List?) ?? const []).map((e) => '$e')},
+        fullSeals: j['full_seals'] != false,
       );
 }
 
@@ -214,7 +223,8 @@ Future<img.Image> rasterizeLines(List<TicketLine> lines, int columns, int widthD
   final charW = widthDots / columns;
   final fontSize = charW / 0.6;
   final lineH = (fontSize * 1.25).ceilToDouble();
-  final heights = [for (final l in lines) l.big ? lineH * 2 : lineH];
+  final smallFont = widthDots / smallColumns(columns) / 0.6;
+  final heights = [for (final l in lines) l.big ? lineH * 2 : (l.small ? (smallFont * 1.2).ceilToDouble() : lineH)];
   final total = heights.fold(0.0, (a, b) => a + b).ceil();
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
@@ -228,7 +238,7 @@ Future<img.Image> rasterizeLines(List<TicketLine> lines, int columns, int widthD
         style: TextStyle(
           fontFamily: 'monospace',
           fontFamilyFallback: const ['Courier', 'Menlo', 'RobotoMono'],
-          fontSize: l.big ? fontSize * 2 : fontSize,
+          fontSize: l.big ? fontSize * 2 : (l.small ? smallFont : fontSize),
           fontWeight: l.bold ? FontWeight.w700 : FontWeight.w400,
           color: Colors.black,
         ),
@@ -279,6 +289,7 @@ TicketBrand ticketBrand(WidgetRef ref, PrinterSettings s) {
     footer: s.footer,
     code: s.code,
     columns: s.columns,
+    fullSeals: s.fullSeals,
   );
 }
 
@@ -297,14 +308,14 @@ Future<void> sendToPrinter(PrinterSettings s, List<int> bytes) async {
 
 /// Imprime (con las copias configuradas) y avisa si algo falla.
 /// [build] arma el ticket con la marca de la empresa.
-Future<bool> printTicket(BuildContext context, WidgetRef ref, Ticket Function(TicketBrand brand) build) async {
+Future<bool> printTicket(BuildContext context, WidgetRef ref, TicketBuilder build) async {
   final s = ref.read(printerSettingsProvider);
   if (!s.configured) {
     showSnack(context, 'Configura una impresora en Más › Impresora.');
     return false;
   }
   try {
-    final bytes = await ticketBytes(build(ticketBrand(ref, s)), s);
+    final bytes = await ticketBytes(await build(ticketBrand(ref, s)), s);
     for (var i = 0; i < s.copies.clamp(1, 5); i++) {
       await sendToPrinter(s, bytes);
     }
@@ -315,8 +326,17 @@ Future<bool> printTicket(BuildContext context, WidgetRef ref, Ticket Function(Ti
   }
 }
 
+/// Arma el ticket con la marca de la empresa; puede esperar datos (el CFDI).
+typedef TicketBuilder = FutureOr<Ticket> Function(TicketBrand brand);
+
+/// ¿Se imprimiría solo al guardar este tipo?
+bool willAutoPrint(WidgetRef ref, String kind) {
+  final s = ref.read(printerSettingsProvider);
+  return s.configured && s.auto.contains(kind);
+}
+
 /// Impresión automática al guardar, si está activa para ese tipo.
-Future<void> autoPrint(BuildContext context, WidgetRef ref, String kind, Ticket Function(TicketBrand brand) build) async {
+Future<void> autoPrint(BuildContext context, WidgetRef ref, String kind, TicketBuilder build) async {
   final s = ref.read(printerSettingsProvider);
   if (!s.configured || !s.auto.contains(kind)) return;
   await printTicket(context, ref, build);
@@ -364,7 +384,61 @@ Future<void> reprintDocument(BuildContext context, WidgetRef ref, int id) async 
     return;
   }
   final d = PrintDoc.fromApi(doc);
-  await printTicket(context, ref, (b) => documentTicket(d, b));
+  final cfdi = mayBeCfdi(d.type) ? await loadCfdi(ref, 'documents', id) : null;
+  if (!context.mounted) return;
+  await printTicket(context, ref, (b) => documentTicket(d, b, cfdi: cfdi));
+}
+
+/// Pide el CFDI la primera vez y otra vez mientras siga sin timbrar (para
+/// reimprimir desde el diálogo de guardado ya con el timbre).
+Future<CfdiPrint?> Function() cfdiLoader(WidgetRef ref, String kind, int? id, {bool enabled = true}) {
+  CfdiPrint? last;
+  var done = false;
+  return () async {
+    if (id == null || !enabled) return null;
+    if (done && (last == null || !last!.pendingStamp)) return last;
+    last = await loadCfdi(ref, kind, id);
+    done = true;
+    return last;
+  };
+}
+
+/// ¿La empresa puede timbrar? Sin país en la sesión decide el servidor
+/// (`fiscal` en la respuesta y 404 cuando nunca es CFDI).
+bool companyMayStamp(WidgetRef ref) {
+  final company = asMap(ref.read(sessionProvider)?.tenant['company']);
+  final country = '${company['country'] ?? company['country_code'] ?? ''}'.toUpperCase();
+  return country.isEmpty || country == 'MX' || country == 'MEX';
+}
+
+/// Datos del CFDI para imprimir ([kind] = 'documents' o 'payments'). Con señal
+/// se piden y se guardan con el documento para reimprimir sin señal. Si aún no
+/// está timbrado (el PAC timbra en segundo plano) se reintenta [retries] veces.
+/// null = no es fiscal: se imprime el ticket normal.
+Future<CfdiPrint?> loadCfdi(WidgetRef ref, String kind, int id, {int retries = 2, Duration wait = const Duration(seconds: 3)}) async {
+  if (!companyMayStamp(ref)) return null;
+  final db = ref.read(localDbProvider);
+  final key = 'print_cfdi_${kind}_$id';
+  for (var attempt = 0;; attempt++) {
+    try {
+      final c = CfdiPrint.fromApi(unwrap(await ref.read(apiProvider).get('/$kind/$id/cfdi')));
+      await db.putJson(key, c.toJson());
+      if (c.pendingStamp && attempt < retries) {
+        await Future<void>.delayed(wait);
+        continue;
+      }
+      return c.fiscal ? c : null;
+    } on ApiException catch (e) {
+      if (e.status == 404) {
+        await db.putJson(key, const {'fiscal': false});
+        return null;
+      }
+      final cached = await db.getJson(key);
+      if (cached == null) return null;
+      final c = CfdiPrint.fromApi(cached);
+      return c.fiscal ? c : null;
+    }
+  }
 }
 
 /// Documento para imprimir a partir del carrito (sin señal o venta de ruta).

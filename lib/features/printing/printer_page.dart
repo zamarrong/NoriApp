@@ -198,6 +198,13 @@ class _PrinterPageState extends ConsumerState<PrinterPage> {
           value: s.logo,
           onChanged: (v) => _set(s.copyWith(logo: v)),
         ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Sellos del CFDI completos'),
+          subtitle: Text(s.fullSeals ? 'Sellos y cadena original completos' : 'Sellos abreviados (ticket más corto)'),
+          value: s.fullSeals,
+          onChanged: (v) => _set(s.copyWith(fullSeals: v)),
+        ),
         Row(children: [
           Expanded(child: Text('Copias', style: NrText.body(context))),
           NrStepper(

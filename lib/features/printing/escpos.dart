@@ -12,14 +12,20 @@ sealed class TicketOp {
 }
 
 class TText extends TicketOp {
-  const TText(this.text, {this.align = TAlign.left, this.bold = false, this.big = false});
+  const TText(this.text, {this.align = TAlign.left, this.bold = false, this.big = false, this.small = false});
   final String text;
   final TAlign align;
   final bool bold;
 
   /// Doble alto y ancho (la mitad de columnas).
   final bool big;
+
+  /// Letra chica (fuente B: [smallColumns] columnas), para sellos y cadenas.
+  final bool small;
 }
+
+/// Columnas de la letra chica (fuente B, 9 puntos): 42 en 58 mm, 64 en 80 mm.
+int smallColumns(int columns) => columns * 4 ~/ 3;
 
 /// Texto a la izquierda y a la derecha del mismo renglón.
 class TRow extends TicketOp {
@@ -64,6 +70,7 @@ class Ticket {
   final List<TicketOp> ops = [];
 
   void text(String s, {TAlign align = TAlign.left, bool bold = false, bool big = false}) => ops.add(TText(s, align: align, bold: bold, big: big));
+  void small(String s, {TAlign align = TAlign.left, bool bold = false}) => ops.add(TText(s, align: align, bold: bold, small: true));
   void center(String s, {bool bold = false, bool big = false}) => text(s, align: TAlign.center, bold: bold, big: big);
   void row(String left, String right, {bool bold = false, bool big = false}) => ops.add(TRow(left, right, bold: bold, big: big));
   void divider([String c = '-']) => ops.add(TDivider(c));
@@ -77,11 +84,12 @@ enum TicketCharset { cp858, cp850, ascii, raster }
 
 /// Un renglón ya acomodado a lo ancho del papel.
 class TicketLine {
-  const TicketLine(this.text, {this.align = TAlign.left, this.bold = false, this.big = false});
+  const TicketLine(this.text, {this.align = TAlign.left, this.bold = false, this.big = false, this.small = false});
   final String text;
   final TAlign align;
   final bool bold;
   final bool big;
+  final bool small;
 }
 
 /// Pinta renglones como imagen de [widthDots] puntos de ancho (para [TicketCharset.raster]).
@@ -127,9 +135,9 @@ List<String> wrapText(String text, int width) {
 /// Acomoda texto y renglones izquierda/derecha a las columnas del papel.
 List<TicketLine> layoutText(TicketOp op, int columns) {
   switch (op) {
-    case TText(:final text, :final align, :final bold, :final big):
-      final width = big ? columns ~/ 2 : columns;
-      return [for (final l in wrapText(normalizeTicketText(text), width)) TicketLine(l, align: align, bold: bold, big: big)];
+    case TText(:final text, :final align, :final bold, :final big, :final small):
+      final width = big ? columns ~/ 2 : (small ? smallColumns(columns) : columns);
+      return [for (final l in wrapText(normalizeTicketText(text), width)) TicketLine(l, align: align, bold: bold, big: big, small: small && !big)];
     case TRow(:final left, :final right, :final bold, :final big):
       final width = big ? columns ~/ 2 : columns;
       final l = normalizeTicketText(left).trim();
@@ -277,10 +285,11 @@ class EscPosEncoder {
             ..addAll(_align(l.align))
             ..addAll([_esc, 0x45, l.bold ? 1 : 0])
             ..addAll([_gs, 0x21, l.big ? 0x11 : 0x00])
+            ..addAll([_esc, 0x4D, l.small ? 1 : 0])
             ..addAll(encodeTicketText(l.text, charset))
             ..add(0x0A);
         }
-        out.addAll([_esc, 0x45, 0, _gs, 0x21, 0]);
+        out.addAll([_esc, 0x45, 0, _gs, 0x21, 0, _esc, 0x4D, 0]);
       }
       pending.clear();
     }

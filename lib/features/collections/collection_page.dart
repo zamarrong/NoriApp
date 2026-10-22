@@ -111,7 +111,8 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
       balanceAfter: offlineData ? null : (owed - appliedTotal).max(Dec.zero),
     );
     if (!mounted) return;
-    await autoPrint(context, ref, 'payment', (b) => paymentTicket(receipt, b));
+    final cfdi = cfdiLoader(ref, 'payments', r.queued ? null : id);
+    await autoPrint(context, ref, 'payment', (b) async => paymentTicket(receipt, b, cfdi: await cfdi()));
     if (!mounted) return;
     if (r.queued) {
       NrHaptics.success();
@@ -140,7 +141,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
             const SizedBox(height: NrSpace.xxl),
             Row(children: [
               if (ref.read(printerSettingsProvider).configured)
-                Expanded(child: NrButton(label: 'Imprimir', icon: Icons.print_rounded, variant: NrButtonVariant.secondary, onPressed: () => printTicket(dialogCtx, ref, (b) => paymentTicket(receipt, b)))),
+                Expanded(child: NrButton(label: 'Imprimir', icon: Icons.print_rounded, variant: NrButtonVariant.secondary, onPressed: () => printTicket(dialogCtx, ref, (b) async => paymentTicket(receipt, b, cfdi: await cfdi())))),
               if (ref.read(printerSettingsProvider).configured && id != null) const SizedBox(width: NrSpace.md),
               if (id != null)
                 Expanded(
