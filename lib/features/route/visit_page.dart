@@ -13,7 +13,12 @@ import '../../core/widgets/pickers.dart';
 import '../../core/widgets/sync_indicator.dart';
 import '../collections/collection_page.dart';
 import '../collections/tender_sheet.dart';
+import '../printing/escpos.dart';
+import '../printing/printer.dart';
+import '../printing/templates.dart';
+import '../sales/cart.dart';
 import '../sales/cart_page.dart';
+import '../sales/quick_capture.dart';
 import 'route_repo.dart';
 import 'route_today_page.dart';
 import 'visit_actions.dart';
@@ -92,7 +97,8 @@ class _VisitPageState extends ConsumerState<VisitPage> {
 
   Future<void> _checkOut() async {
     final gps = await currentGps();
-    await _write('check-out', gps, label: 'Salida', optimistic: {'status': 'completed', 'status_label': 'Visitada', 'check_out_at': gps['at']});
+    final r = await _write('check-out', gps, label: 'Salida', optimistic: {'status': 'completed', 'status_label': 'Visitada', 'check_out_at': gps['at']});
+    if (r != null) await _afterCheckOut();
   }
 
   Future<void> _reason(String type, String action, String title) async {
@@ -100,28 +106,59 @@ class _VisitPageState extends ConsumerState<VisitPage> {
     if (!mounted) return;
     final picked = await pickReason(context, reasons, title: title);
     if (picked == null) return;
-    await _write(action, {'reason_id': picked.$1, if (picked.$2.isNotEmpty) 'notes': picked.$2},
+    final result = await _write(action, {'reason_id': picked.$1, if (picked.$2.isNotEmpty) 'notes': picked.$2},
         label: title,
         optimistic: action == 'skip' ? {'status': 'skipped', 'status_label': 'No visitada'} : {'outcome': 'no_sale'});
+    if (result == null || action != 'no-sale' || !mounted) return;
+    final visit = (await ref.read(routeRepoProvider).visit(widget.visitId)).value;
+    final reason = '${reasons.where((r) => r['id'] == picked.$1).firstOrNull?['name'] ?? ''}';
+    if (mounted) await autoPrint(context, ref, 'visit', (b) => visitTicket(visit, b, reason: reason, notes: picked.$2));
+  }
+
+  Future<void> _printVisit(Map<String, dynamic> v) => printTicket(context, ref, (b) => visitTicket(v, b));
+
+  Future<void> _afterCheckOut() async {
+    final visit = (await ref.read(routeRepoProvider).visit(widget.visitId)).value;
+    if (mounted) await autoPrint(context, ref, 'visit', (b) => visitTicket(visit, b));
   }
 
   Future<void> _cart(Map<String, dynamic> visit, String kind) async {
     final customer = asMap(visit['customer']);
     final titles = {'sale': 'Venta', 'order': 'Pedido', 'pickup': 'Recolección'};
     final api = ref.read(apiProvider);
-    final tenders = asList(asMap(await ref.read(localDbProvider).getJson(RouteRepo.todayKey))['tenders']);
+    final db = ref.read(localDbProvider);
+    final tenders = asList(asMap(await db.getJson(RouteRepo.todayKey))['tenders']);
+    final customerId = (customer['id'] as num?)?.toInt();
+    final planId = (visit['plan_id'] as num?)?.toInt();
+    var suggested = kind == 'sale' ? asList(visit['suggested']) : const <Map<String, dynamic>>[];
+    var initialLines = <CartLine>[];
+    // Captura rápida: la libreta con lo cargado en el camión (sugerido de la visita ya tecleado).
+    if (kind != 'pickup' && customerId != null && ref.read(quickCaptureProvider).enabled && mounted) {
+      final quick = await showQuickCapture(context,
+          customerId: customerId,
+          customerName: '${customer['name'] ?? ''}',
+          title: titles[kind]!,
+          priceListId: (customer['price_list_id'] as num?)?.toInt(),
+          planId: planId,
+          suggested: suggested);
+      if (quick == null) return;
+      initialLines = quick;
+      suggested = const [];
+    }
     if (!mounted) return;
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => CartPage(
         title: titles[kind]!,
         customerName: '${customer['name'] ?? ''}',
         submitLabel: kind == 'sale' ? 'Cobrar o dejar a crédito' : 'Guardar ${titles[kind]!.toLowerCase()}',
-        initial: kind == 'sale' ? asList(visit['suggested']) : const [],
+        initial: suggested,
+        initialLines: initialLines,
         quote: (lines, _) async => asMap(await api.post('$_base/quote', body: {'kind': kind, 'lines': lines})),
         onSubmit: (ctx, cart) async {
           final body = <String, dynamic>{'lines': cart.lines.map((l) => l.toApi()).toList()};
+          TenderChoice? choice;
           if (kind == 'sale') {
-            final choice = await showTenderSheet(ctx, tenderTypes: tenders, total: cart.totals.total, allowCredit: true);
+            choice = await showTenderSheet(ctx, tenderTypes: tenders, total: cart.totals.total, allowCredit: true);
             if (choice == null) return false;
             body['tenders'] = choice.tenders;
           }
@@ -135,9 +172,23 @@ class _VisitPageState extends ConsumerState<VisitPage> {
           if (!ctx.mounted) return false;
           final result = await _write(kind, body, label: titles[kind]!, optimistic: {'outcome': kind});
           if (result == null) return false;
+          if (customerId != null && kind != 'pickup') await rememberLastOrder(db, customerId, cart.lines);
+          if (kind == 'sale' && planId != null) await consumeTruckStock(db, planId, cart.lines);
           final docs = asList(result['documents']);
-          if (docs.isNotEmpty && ctx.mounted) {
-            await showDoneDialog(ctx, ref, '${result['message'] ?? 'Guardado'}', docs.first);
+          final first = docs.firstOrNull;
+          final (paid, change) = await printTenders(ref, choice?.tenders ?? const [], cart.totals.total);
+          final printable = printDocFromCart(cart,
+              type: '${first?['type'] ?? kind}',
+              customer: '${customer['name'] ?? ''}',
+              folio: first?['folio'] as String?,
+              tenders: paid,
+              change: change,
+              onCredit: kind == 'sale' && paid.isEmpty,
+              balance: first?['balance'] == null ? null : Dec.parse(first!['balance']));
+          if (!ctx.mounted) return true;
+          await autoPrint(ctx, ref, printKindOf(kind), (b) => documentTicket(printable, b));
+          if (first != null && ctx.mounted) {
+            await showDoneDialog(ctx, ref, '${result['message'] ?? 'Guardado'}', first, print: (b) => documentTicket(printable, b));
           }
           return true;
         },
@@ -149,7 +200,11 @@ class _VisitPageState extends ConsumerState<VisitPage> {
   Widget build(BuildContext context) {
     final async = ref.watch(visitProvider(widget.visitId));
     return Scaffold(
-      appBar: AppBar(title: const Text('Visita'), actions: const [SyncIndicator()]),
+      appBar: AppBar(title: const Text('Visita'), actions: [
+        if (async.valueOrNull != null)
+          IconButton(icon: const Icon(Icons.print_outlined), tooltip: 'Imprimir comprobante', onPressed: () => _printVisit(async.value!.value)),
+        const SyncIndicator(),
+      ]),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => NrErrorView(e, onRetry: () => ref.invalidate(visitProvider(widget.visitId))),
@@ -328,14 +383,17 @@ Future<(int, String)?> pickReason(BuildContext context, List<Map<String, dynamic
   );
 }
 
-/// Confirmación con la opción de compartir el PDF del documento.
-Future<void> showDoneDialog(BuildContext context, WidgetRef ref, String message, Map<String, dynamic> doc) => showDialog<void>(
+/// Confirmación con la opción de compartir el PDF del documento o imprimirlo.
+Future<void> showDoneDialog(BuildContext context, WidgetRef ref, String message, Map<String, dynamic> doc, {Ticket Function(TicketBrand)? print}) =>
+    showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         icon: Icon(Icons.check_circle, color: ctx.nr.success, size: 40),
         title: Text(message),
         content: doc['total'] == null ? null : Text('Total ${money(doc['total'])}'),
         actions: [
+          if (print != null && ref.read(printerSettingsProvider).configured)
+            TextButton(onPressed: () => printTicket(ctx, ref, print), child: const Text('Imprimir')),
           if (doc['id'] != null)
             TextButton(
               onPressed: () => shareDocument(ctx, ref, kind: 'document', id: (doc['id'] as num).toInt(), title: '${doc['folio'] ?? ''}'),

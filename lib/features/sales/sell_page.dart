@@ -12,9 +12,12 @@ import '../../core/sync/outbox.dart';
 import '../../core/widgets/pickers.dart';
 import '../../core/widgets/sync_indicator.dart';
 import '../collections/tender_sheet.dart';
+import '../printing/printer.dart';
+import '../printing/templates.dart';
 import '../route/visit_page.dart' show showDoneDialog;
 import 'cart.dart';
 import 'cart_page.dart';
+import 'quick_capture.dart';
 
 /// Un tipo de documento de venta que se puede capturar sin ruta.
 class SaleType {
@@ -282,6 +285,16 @@ Future<bool> startSaleDocument(BuildContext context, WidgetRef ref, Map<String, 
     fromBase = base.isNotEmpty;
   }
   final pending = ref.read(pendingSaleItemsProvider);
+  final db = ref.read(localDbProvider);
+  final priceListId = (customer['price_list_id'] as num?)?.toInt();
+  // Captura rápida: la libreta con lo del camión (si hay ruta hoy), favoritos o lo más vendido.
+  if (!fromBase && t.type != 'return' && ref.read(quickCaptureProvider).enabled) {
+    final planId = await todayTruckPlanId(db);
+    if (!context.mounted) return false;
+    final quick = await showQuickCapture(context, customerId: id, customerName: name, title: t.label, priceListId: priceListId, planId: planId);
+    if (quick == null) return false;
+    initialLines = quick;
+  }
   if (!fromBase) {
     initialLines = [...initialLines, for (final it in pending) CartLine(item: it, quantity: Dec.one)];
   }
@@ -293,7 +306,7 @@ Future<bool> startSaleDocument(BuildContext context, WidgetRef ref, Map<String, 
       title: t.label,
       customerName: name,
       submitLabel: t.collects && session.canCollect ? 'Guardar y cobrar' : 'Guardar ${t.label.toLowerCase()}',
-      priceListId: (customer['price_list_id'] as num?)?.toInt(),
+      priceListId: priceListId,
       initialLines: initialLines,
       allowHeader: true,
       allowAdd: !fromBase,
@@ -313,11 +326,12 @@ Future<bool> startSaleDocument(BuildContext context, WidgetRef ref, Map<String, 
           ...cart.header,
           if (cart.notes.isNotEmpty) 'notes': cart.notes,
         };
+        TenderChoice? choice;
         if (t.collects && session.canCollect) {
           var tenders = session.tenderTypes;
           if (tenders.isEmpty) tenders = await ref.read(localDbProvider).all('tender_types');
           if (!ctx.mounted) return false;
-          final choice = await showTenderSheet(ctx, tenderTypes: tenders, total: cart.totals.total, allowCredit: true, title: t.label);
+          choice = await showTenderSheet(ctx, tenderTypes: tenders, total: cart.totals.total, allowCredit: true, title: t.label);
           if (choice == null) return false;
           if (choice.onCredit) {
             body['on_credit'] = true;
@@ -331,11 +345,27 @@ Future<bool> startSaleDocument(BuildContext context, WidgetRef ref, Map<String, 
         if (r == null || !ctx.mounted) return false;
         ref.read(pendingSaleItemsProvider.notifier).state = [];
         saved = true;
+        await rememberLastOrder(db, id, cart.lines);
+        final (paid, change) = await printTenders(ref, choice?.tenders ?? const [], cart.totals.total);
+        final onCredit = choice?.onCredit ?? false;
+        PrintDoc printable;
+        if (r.queued) {
+          printable = printDocFromCart(cart, type: t.type, customer: name, tenders: paid, change: change, onCredit: onCredit);
+        } else {
+          final doc = asMap(unwrap(r.response));
+          if (doc['id'] != null) await db.putJson('print_doc_${doc['id']}', doc);
+          printable = asList(doc['lines']).isEmpty
+              ? printDocFromCart(cart, type: t.type, customer: name, folio: doc['folio'] as String?, tenders: paid, change: change, onCredit: onCredit)
+              : PrintDoc.fromApi(doc, tenders: paid, change: change, onCredit: onCredit);
+        }
+        if (!ctx.mounted) return true;
+        await autoPrint(ctx, ref, printKindOf(t.type), (b) => documentTicket(printable, b));
+        if (!ctx.mounted) return true;
         if (r.queued) {
           showSnack(ctx, '${t.label} guardada sin señal; se enviará sola.');
         } else {
           final doc = asMap(unwrap(r.response));
-          await showDoneDialog(ctx, ref, '${t.label} ${doc['folio'] ?? ''}', doc);
+          await showDoneDialog(ctx, ref, '${t.label} ${doc['folio'] ?? ''}', doc, print: (b) => documentTicket(printable, b));
         }
         return true;
       },
@@ -501,7 +531,7 @@ class _MyDocumentsPageState extends ConsumerState<MyDocumentsPage> {
                           const SizedBox(height: 2),
                           NrPill(documentStatusLabels[d['status']] ?? '${d['status']}', tone: documentTone(d['status'] as String?)),
                         ]),
-                        onTap: () => shareDocument(context, ref, kind: 'document', id: (d['id'] as num).toInt(), title: '${d['folio']}'),
+                        onTap: () => _documentActions(context, ref, d),
                       ),
                   ]),
               ];
@@ -512,3 +542,28 @@ class _MyDocumentsPageState extends ConsumerState<MyDocumentsPage> {
     );
   }
 }
+
+/// Enviar el PDF o reimprimir en la impresora térmica.
+Future<void> _documentActions(BuildContext context, WidgetRef ref, Map<String, dynamic> d) => showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.print_outlined),
+            title: const Text('Reimprimir'),
+            onTap: () {
+              Navigator.pop(ctx);
+              reprintDocument(context, ref, (d['id'] as num).toInt());
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.picture_as_pdf_outlined),
+            title: const Text('Enviar PDF'),
+            onTap: () {
+              Navigator.pop(ctx);
+              shareDocument(context, ref, kind: 'document', id: (d['id'] as num).toInt(), title: '${d['folio']}');
+            },
+          ),
+        ]),
+      ),
+    );

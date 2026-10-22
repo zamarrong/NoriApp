@@ -8,6 +8,8 @@ import '../../core/design/design.dart';
 import '../../core/providers.dart';
 import '../../core/sync/outbox.dart';
 import '../../core/widgets/pickers.dart';
+import '../printing/printer.dart';
+import '../printing/templates.dart';
 import 'allocation.dart';
 
 /// Cobranza: contra facturas abiertas (las más vencidas primero) o pago a cuenta.
@@ -83,14 +85,38 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     if (!mounted) return;
     setState(() => busy = false);
     if (r == null) return;
+    final owed = docs.fold(Dec.zero, (s, d) => s + Dec.parse(d['balance']).max(Dec.zero));
+    final appliedTotal = applied.values.fold(Dec.zero, (s, v) => s + v);
+    final folios = {for (final d in docs) (d['id'] as num).toInt(): '${d['folio']}'};
+    var payment = r.queued ? <String, dynamic>{} : asMap(widget.visitId != null ? asMap(r.response)['payment'] : unwrap(asMap(r.response)));
+    final id = (payment['id'] as num?)?.toInt();
+    // El cobro de ruta solo regresa id y total: el folio viene del detalle.
+    if (id != null && payment['folio'] == null) {
+      try {
+        payment = {...payment, ...asMap(unwrap(await ref.read(apiProvider).get('/payments/$id')))};
+      } on ApiException catch (_) {}
+    }
+    final (paidTenders, localChange) = await printTenders(ref, tenders, paid);
+    final serverChange = payment['change'] ?? payment['change_total'];
+    final receipt = PrintPayment(
+      folio: payment['folio'] as String?,
+      date: DateTime.now(),
+      customer: widget.customerName,
+      total: payment['total'] == null ? paid : Dec.parse(payment['total']),
+      tenders: paidTenders,
+      applications: [for (final e in applied.entries) (folios[e.key] ?? '${e.key}', e.value)],
+      change: serverChange == null ? localChange : Dec.parse(serverChange),
+      unapplied: leftover,
+      balanceAfter: offlineData ? null : (owed - appliedTotal).max(Dec.zero),
+    );
+    if (!mounted) return;
+    await autoPrint(context, ref, 'payment', (b) => paymentTicket(receipt, b));
+    if (!mounted) return;
     if (r.queued) {
       showSnack(context, 'Cobro guardado sin señal; se enviará solo.');
       Navigator.of(context).pop(true);
       return;
     }
-    final body = asMap(r.response);
-    final payment = asMap(widget.visitId != null ? body['payment'] : unwrap(body));
-    final id = (payment['id'] as num?)?.toInt();
     await showDialog<void>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
@@ -100,6 +126,8 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
             ? 'Cambio: ${money(payment['change'] ?? payment['change_total'])}'
             : 'Registrado.'),
         actions: [
+          if (ref.read(printerSettingsProvider).configured)
+            TextButton(onPressed: () => printTicket(dialogCtx, ref, (b) => paymentTicket(receipt, b)), child: const Text('Imprimir')),
           if (id != null)
             TextButton(
               onPressed: () => shareDocument(dialogCtx, ref, kind: 'payment', id: id, title: 'Recibo de pago'),

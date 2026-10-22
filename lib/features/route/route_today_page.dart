@@ -10,6 +10,9 @@ import '../../core/design/design.dart';
 import '../../core/providers.dart';
 import '../../core/sync/outbox.dart';
 import '../../core/widgets/sync_indicator.dart';
+import '../printing/printer.dart';
+import '../printing/templates.dart';
+import '../sales/quick_capture.dart';
 import 'route_repo.dart';
 
 NrTone stopTone(String? status) => switch (status) {
@@ -171,10 +174,28 @@ class _PlanHeader extends ConsumerWidget {
                 final op = OutboxOp.create('POST', '/route/plans/${plan['id']}/finish', body: {}, label: 'Fin de ruta');
                 final r = await sendWithAuthorization(context, ref, op);
                 if (r != null) ref.invalidate(routeTodayProvider);
+                if (r != null && context.mounted) await autoPrint(context, ref, 'settlement', (b) => settlementTicket(plan, b));
               },
             ),
           ),
         ],
+        const SizedBox(height: NrSpace.md),
+        Wrap(spacing: NrSpace.sm, children: [
+          if (plan['truck_warehouse_id'] != null)
+            ActionChip(
+              avatar: const Icon(Icons.local_shipping_outlined, size: 18),
+              label: const Text('Hoja de carga'),
+              onPressed: () async {
+                final stock = await truckStock(ref.read(apiProvider), ref.read(localDbProvider), (plan['id'] as num).toInt());
+                if (context.mounted) await printTicket(context, ref, (b) => loadSheetTicket(plan, stock, b));
+              },
+            ),
+          ActionChip(
+            avatar: const Icon(Icons.summarize_outlined, size: 18),
+            label: const Text('Liquidación'),
+            onPressed: () => printTicket(context, ref, (b) => settlementTicket(plan, b)),
+          ),
+        ]),
       ]),
     );
   }

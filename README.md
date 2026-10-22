@@ -127,6 +127,30 @@ API v1 **todavía no lo expone**. La app ya lo lee si llega como `tenant.accent_
 `tenant.appearance.accent_color`) en `/auth/login`; mientras tanto usa `#2563EB`. Propuesta para nori-web:
 agregar `accent_color` y `logo_url` al objeto `tenant` de `TokenSession` y a `/me`.
 
+### Captura rápida
+
+Más › Configuración › *Modo de captura rápida* (por equipo). La venta abre una libreta con un renglón
+por artículo: lo cargado en el camión del día (`/route/plans/{id}/stock`) o, sin ruta, los favoritos
+del equipo o lo más vendido por el usuario en 30 días (`/items/frequent`). Se teclea la cantidad y
+"Siguiente" pasa al renglón de abajo; los ceros no van. Al continuar, las líneas entran al carrito
+normal (precio del motor, cobro, guardado). Sin señal usa la carga y los precios guardados y descuenta
+del camión guardado lo vendido. "Repetir último" toma lo último que se le vendió al cliente en este equipo.
+
+### Impresión Bluetooth
+
+Más › Impresora: buscar, elegir, papel de 58 u 80 mm, acentos, copias, logo, pie, código del folio
+(QR o barras) e impresión automática por tipo. Formatos fijos en `lib/features/printing/templates.dart`
+(venta, pedido, cotización, recibo de cobro, visita/no venta, liquidación y hoja de carga) que se
+convierten a ESC/POS en `escpos.dart`. Reimprimir: Mis documentos y las confirmaciones de venta y cobro.
+
+- Android: Bluetooth clásico (SPP, la impresora se empareja antes en Ajustes) con
+  `print_bluetooth_thermal` y BLE con `flutter_blue_plus` (fijado en 1.x, licencia BSD).
+- iOS: solo BLE. Las impresoras de solo Bluetooth clásico necesitan certificación MFi de Apple y no se
+  pueden usar; la mayoría de las térmicas baratas de 58 mm son de modo dual y sí exponen BLE.
+- Acentos: CP858 (`ESC t 19`) por omisión; CP850 si la impresora no tiene CP858; "Como imagen" pinta el
+  texto en el teléfono y lo manda como mapa de bits cuando no hay página de códigos útil.
+- El logo sale de la sesión (`company.logo`, data URI PNG/JPG); un SVG no se imprime.
+
 ## Pruebas
 
 `test/core_test.dart`: decimales, resolución de servidor, sobre de errores, clasificación de resultados de

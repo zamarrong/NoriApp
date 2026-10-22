@@ -10,6 +10,7 @@ import '../../core/providers.dart';
 import '../../core/sync/outbox.dart';
 import '../../core/sync/sync_engine.dart';
 import '../../core/widgets/sync_indicator.dart';
+import '../printing/printer.dart';
 
 class MorePage extends ConsumerWidget {
   const MorePage({super.key});
@@ -45,6 +46,14 @@ class MorePage extends ConsumerWidget {
         ]),
         NrSectionHeader('Preferencias'),
         NrGroup(children: [
+          NrListRow(leading: const Icon(Icons.tune), title: 'Configuración', subtitle: 'Captura rápida y favoritos', trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/settings')),
+          NrListRow(
+            leading: const Icon(Icons.print_outlined),
+            title: 'Impresora',
+            subtitle: ref.watch(printerSettingsProvider).name ?? 'Térmica Bluetooth 58/80 mm',
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/printer'),
+          ),
           Padding(
             padding: const EdgeInsets.all(NrSpace.md),
             child: SegmentedButton<ThemeMode>(

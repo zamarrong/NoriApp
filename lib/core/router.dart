@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/more/settings_page.dart';
+import '../features/printing/printer_page.dart';
 import '../features/auth/auth_pages.dart';
 import '../features/checker/checker_page.dart';
 import '../features/customers/customers_page.dart';
@@ -87,6 +89,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/sync', builder: (_, _) => const SyncPage()),
       GoRoute(path: '/documents', builder: (_, _) => const MyDocumentsPage()),
       GoRoute(path: '/checker', builder: (_, _) => const CheckerPage()),
+      GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
+      GoRoute(path: '/printer', builder: (_, _) => const PrinterPage()),
     ],
   );
 });

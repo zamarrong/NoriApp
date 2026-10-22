@@ -8,6 +8,10 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Nori usa Bluetooth para imprimir tickets, recibos y hojas de carga en tu impresora térmica.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Nori usa Bluetooth para imprimir tickets, recibos y hojas de carga en tu impresora térmica.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Nori usa la cámara para escanear códigos de barras (checador de precios y venta) y tomar fotos de los equipos.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
