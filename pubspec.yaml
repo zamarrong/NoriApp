@@ -71,14 +71,16 @@ flutter:
         - asset: assets/fonts/Inter-Bold.ttf
           weight: 700
 
-# App icon: the Nori brand icon (same as nori-web public/images/marca/nori-icono-app.svg), square
+# App icon: option C of store/play (the "n" of the wordmark with the cloud dot); sources in store/play/src/app-icon*.svg
 flutter_launcher_icons:
   android: true
   ios: true
   image_path: assets/icon/app_icon.png
   remove_alpha_ios: true
-  adaptive_icon_background: "#2563EB"
-  adaptive_icon_foreground: assets/icon/app_icon.png
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: assets/icon/app_icon_foreground.png
+  adaptive_icon_foreground_inset: 0 # the artwork already keeps the 66/108 safe zone
+  adaptive_icon_monochrome: assets/icon/app_icon_monochrome.png
 
 dependency_overrides:
   # 14.x needs Android Gradle Plugin 9 (built-in Kotlin); this project is on AGP 8.11

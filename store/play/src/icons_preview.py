@@ -23,11 +23,19 @@ sizes = [(512, 'squircle'), (512, 'circle'), (96, 'squircle'), (96, 'circle'), (
 pad, gap = 60, 48
 W = pad * 2 + sum(s for s, _ in sizes) + gap * (len(sizes) - 1)
 row = 512 + 110
-names = {'a': 'A · Nube azul sobre blanco', 'b': 'B · Nube blanca con profundidad', 'c': 'C · La “n” con la nube'}
-H = pad + row * 3 + 20
+names = {'c': 'C · Ícono de Google Play (512 px)', 'launcher': 'C · Ícono de la app en Android (capa adaptativa, zona visible 72/108)'}
+
+def launcher():
+    # What the launcher shows: the adaptive foreground over the white background, cropped to 72 of 108 dp
+    fg = Image.open(os.path.join(os.path.dirname(D), '..', 'assets', 'icon', 'app_icon_foreground.png')).convert('RGBA')
+    base = Image.new('RGBA', fg.size, '#FFFFFF'); base.alpha_composite(fg)
+    c = fg.width * (108 - 72) / 2 / 108
+    return base.crop((int(c), int(c), int(fg.width - c), int(fg.width - c)))
+
+H = pad + row * 2 + 20
 out = Image.new('RGB', (W, H), '#EEF1F6'); d = ImageDraw.Draw(out)
-for r, key in enumerate('abc'):
-    icon = Image.open(os.path.join(D, f'icon-{key}.png')).convert('RGBA')
+for r, key in enumerate(['c', 'launcher']):
+    icon = launcher() if key == 'launcher' else Image.open(os.path.join(D, f'icon-{key}.png')).convert('RGBA')
     y0 = pad + r * row
     d.text((pad, y0), names[key], font=title, fill='#0F172A')
     x = pad

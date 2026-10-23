@@ -5,7 +5,7 @@ set -euo pipefail
 IN="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"; OUT="$2"; W="$3"; H="$4"
 CHROME="${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 PROFILE="$(mktemp -d)"
-"$CHROME" --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 \
+"$CHROME" --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 --default-background-color=00000000 \
   --user-data-dir="$PROFILE" --allow-file-access-from-files --virtual-time-budget=3000 \
   --window-size="$W,$H" --screenshot="$OUT" "file://$IN" >/dev/null 2>&1
 rm -rf "$PROFILE"

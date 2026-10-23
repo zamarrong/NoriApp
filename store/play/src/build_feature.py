@@ -51,12 +51,9 @@ def render(doc, name):
 
 big_cloud = lambda fill, x, y, w: f'<svg viewBox="10 28 108 72" style="position:absolute;left:{x}px;top:{y}px;width:{w}px" fill="{fill}">{CLOUD}</svg>'
 
-render(html('#2563EB', '#FFFFFF', '#BFD3FB', '#BFD3FB', 'Vende en ruta<br>y en mostrador',
-            'Venta, cobro, ticket y CFDI. Con o sin señal.',
-            [phone('screens/phone/05_captura_rapida_l.png', 236, 735, 92, 0), phone('screens/phone/01_hoy_l.png', 250, 590, 60, 0)],
-            big_cloud('#2D6CF0', 520, 40, 640)), 'feature-graphic.png')
+# Chosen design (owner): the light version with two phones.
 render(html('#F3F6FD', '#0F172A', '#2563EB', '#2563EB', 'Cobra y <em>factura</em><br>desde la ruta',
             'La app de Nori para tu equipo de ventas.',
-            [phone('screens/phone/01_hoy_l.png', 270, 640, 70, 0)],
-            big_cloud('#E3EBFC', 500, 30, 640)), 'feature-graphic-b.png')
+            [phone('screens/phone/05_captura_rapida_l.png', 236, 745, 96, 0), phone('screens/phone/01_hoy_l.png', 252, 598, 58, 0)],
+            big_cloud('#E3EBFC', 500, 30, 640)), 'feature-graphic.png')
 print('ok')
