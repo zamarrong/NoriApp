@@ -1,4 +1,4 @@
-package mx.nori.nori_mobile
+package software.nori.app
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 

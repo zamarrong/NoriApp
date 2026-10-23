@@ -753,7 +753,7 @@ class _StopsMap extends StatelessWidget {
         initialZoom: 14,
       ),
       children: [
-        TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'mx.nori.nori_mobile'),
+        TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'software.nori.app'),
         PolylineLayer(polylines: [Polyline(points: points, strokeWidth: 4, color: nr.accent.withValues(alpha: 0.7))]),
         MarkerLayer(markers: [
           if (depot['lat'] != null)

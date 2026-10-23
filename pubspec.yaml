@@ -79,3 +79,7 @@ flutter_launcher_icons:
   remove_alpha_ios: true
   adaptive_icon_background: "#2563EB"
   adaptive_icon_foreground: assets/icon/app_icon.png
+
+dependency_overrides:
+  # 14.x needs Android Gradle Plugin 9 (built-in Kotlin); this project is on AGP 8.11
+  permission_handler_android: 13.0.1
