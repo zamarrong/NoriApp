@@ -11,6 +11,7 @@ import '../../core/authorizations/authorization_flow.dart';
 import '../../core/design/design.dart';
 import '../../core/providers.dart';
 import '../../core/sync/outbox.dart';
+import '../../core/widgets/nori_logo.dart';
 import '../../core/widgets/sync_indicator.dart';
 import '../printing/printer.dart';
 import '../printing/templates.dart';
@@ -87,6 +88,8 @@ class _RouteTodayPageState extends ConsumerState<RouteTodayPage> {
       eyebrow: _today(),
       title: name.isEmpty ? greeting() : '${greeting()}, $name',
       subtitle: subtitle,
+      leading: const Padding(padding: EdgeInsets.only(left: NrSpace.gutter), child: Align(alignment: Alignment.centerLeft, child: NoriLogo(height: 26))),
+      leadingWidth: 120,
       actions: const [SyncIndicator()],
       onRefresh: () async {
         ref.invalidate(routeTodayProvider);

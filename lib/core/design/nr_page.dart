@@ -19,6 +19,7 @@ class NrScrollPage extends StatefulWidget {
     this.floating,
     this.padding = const EdgeInsets.fromLTRB(NrSpace.gutter, 0, NrSpace.gutter, NrSpace.xxxl),
     this.leading,
+    this.leadingWidth,
     this.headerTrailing,
   });
 
@@ -32,6 +33,7 @@ class NrScrollPage extends StatefulWidget {
   final Widget? floating;
   final EdgeInsetsGeometry padding;
   final Widget? leading;
+  final double? leadingWidth;
   final Widget? headerTrailing;
 
   @override
@@ -87,6 +89,7 @@ class _NrScrollPageState extends State<NrScrollPage> {
     return Scaffold(
       appBar: AppBar(
         leading: widget.leading,
+        leadingWidth: widget.leadingWidth,
         backgroundColor: _scrolled ? nr.surface.withValues(alpha: 0.96) : nr.canvas,
         shape: Border(bottom: BorderSide(color: _scrolled ? nr.border : Colors.transparent)),
         title: AnimatedOpacity(
