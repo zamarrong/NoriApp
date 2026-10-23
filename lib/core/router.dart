@@ -8,6 +8,7 @@ import '../features/auth/auth_pages.dart';
 import '../features/checker/checker_page.dart';
 import '../features/customers/customers_page.dart';
 import '../features/inventory/count_page.dart';
+import '../features/onboarding/onboarding_page.dart';
 import '../features/inventory/inventory_page.dart';
 import '../features/inventory/movement_page.dart';
 import '../features/more/more_page.dart';
@@ -41,6 +42,7 @@ List<NavTab> tabsFor(Session s) => [
 final routerProvider = Provider<GoRouter>((ref) {
   final refresh = ValueNotifier(0);
   ref.listen(authProvider, (_, _) => refresh.value++);
+  ref.listen(onboardingSeenProvider, (_, _) => refresh.value++);
   ref.onDispose(refresh.dispose);
 
   return GoRouter(
@@ -53,7 +55,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         case AuthStatus.loading:
           return loc == '/splash' ? null : '/splash';
         case AuthStatus.signedOut:
-          return loc == '/login' ? null : '/login';
+          // First launch: the onboarding once (finished or skipped), then sign-in.
+          final to = ref.read(onboardingSeenProvider) ? '/login' : '/onboarding';
+          return loc == to ? null : to;
         case AuthStatus.locked:
           return loc == '/unlock' ? null : '/unlock';
         case AuthStatus.signedIn:
@@ -66,7 +70,8 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(path: '/', builder: (_, _) => const SizedBox.shrink()),
       GoRoute(path: '/splash', builder: (_, _) => const SplashPage()),
-      GoRoute(path: '/login', builder: (_, _) => const LoginPage()),
+      GoRoute(path: '/onboarding', pageBuilder: (_, s) => _fadePage(s, const OnboardingPage())),
+      GoRoute(path: '/login', pageBuilder: (_, s) => _fadePage(s, const LoginPage())),
       GoRoute(path: '/unlock', builder: (_, _) => const UnlockPage()),
       GoRoute(path: '/warehouse', builder: (_, _) => const WarehousePage()),
       ShellRoute(
@@ -108,12 +113,20 @@ Page<void> _tabPage(GoRouterState state, Widget child) => CustomTransitionPage<v
       ),
     );
 
+/// Splash → onboarding → sign-in: a plain cross-fade.
+Page<void> _fadePage(GoRouterState state, Widget child) => CustomTransitionPage<void>(
+      key: state.pageKey,
+      child: child,
+      transitionDuration: const Duration(milliseconds: 320),
+      transitionsBuilder: (context, a, _, child) => FadeTransition(opacity: CurvedAnimation(parent: a, curve: Curves.easeOut), child: child),
+    );
+
 /// Arranque: el logo sobre el lienzo mientras se lee la sesión.
 class SplashPage extends StatelessWidget {
   const SplashPage({super.key});
 
   @override
-  Widget build(BuildContext context) => Scaffold(body: Center(child: NrPulseDot(color: context.nr.accent, size: 12)));
+  Widget build(BuildContext context) => Scaffold(backgroundColor: authBackground(context.nr), body: Center(child: NrPulseDot(color: context.nr.accent, size: 12)));
 }
 
 class MainShell extends ConsumerWidget {

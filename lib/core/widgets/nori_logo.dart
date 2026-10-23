@@ -18,3 +18,14 @@ class NoriLogo extends StatelessWidget {
     );
   }
 }
+
+/// The isotype alone: Nori's cloud on the brand tile (the app icon), for tight spots
+/// such as the top of the onboarding and the sign-in.
+class NoriMark extends StatelessWidget {
+  const NoriMark({super.key, this.size = 36});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => SvgPicture.asset('assets/brand/nori-icono-app.svg', width: size, height: size, semanticsLabel: 'Nori');
+}

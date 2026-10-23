@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -7,15 +8,19 @@ import '../../core/design/design.dart';
 import '../../core/providers.dart';
 import '../../core/widgets/nori_logo.dart';
 
-class _Brand extends StatelessWidget {
-  const _Brand();
+/// [AnimatedSize] that steps aside when motion is reduced (a zero duration makes it re-layout itself).
+Widget _resize(BuildContext context, Widget child, {Duration duration = NrMotion.base}) =>
+    nrReduceMotion(context) ? child : AnimatedSize(duration: duration, curve: NrMotion.ease, alignment: Alignment.topCenter, child: child);
 
-  @override
-  Widget build(BuildContext context) => const Align(alignment: Alignment.centerLeft, child: NoriLogo(height: 44));
-}
+/// Background of the sign-in screens: plain white in light, the canvas in dark.
+Color authBackground(NrColors nr) => nr.night ? nr.canvas : nr.surface;
 
-/// Inicio de sesión: empresa (código o servidor), usuario y contraseña. El
-/// login registra este dispositivo (un token por dispositivo).
+enum _Step { company, credentials }
+
+/// Sign-in in two steps: first the company (code, domain or server URL, checked
+/// against the server), then user and password. A device that already signed in
+/// starts on the second step with its company remembered. Signing in registers
+/// this device (one token per device).
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
 
@@ -29,32 +34,122 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   late final tenant = TextEditingController(text: prefs.getString(AuthController.lastTenantKey) ?? '');
   late final user = TextEditingController(text: prefs.getString(AuthController.lastUserKey) ?? '');
   final password = TextEditingController();
-  late bool advanced = tenant.text.isNotEmpty;
+  final _userFocus = FocusNode();
+  final _passwordFocus = FocusNode();
+
+  late _Step step = server.text.trim().isEmpty ? _Step.company : _Step.credentials;
+  late bool withCode = tenant.text.isNotEmpty;
   bool busy = false;
   bool obscure = true;
+  String? companyError;
+  String? codeError;
+  String? userError;
+  String? passwordError;
+
+  /// Problem that is not about one field (no connection, server error).
   String? error;
 
-  Future<void> _submit() async {
+  @override
+  void dispose() {
+    for (final c in [server, tenant, user, password]) {
+      c.dispose();
+    }
+    _userFocus.dispose();
+    _passwordFocus.dispose();
+    super.dispose();
+  }
+
+  String? get _code => withCode && tenant.text.trim().isNotEmpty ? tenant.text.trim() : null;
+
+  /// What the company chip shows: what the user typed, without the scheme.
+  String get _companyLabel {
+    final s = server.text.trim().replaceFirst(RegExp(r'^https?://'), '').replaceFirst(RegExp(r'/+$'), '');
+    return _code == null ? s : '$s · $_code';
+  }
+
+  String _networkMessage() => 'No pudimos conectar con ${server.text.trim()}. Revisa la dirección o tu señal.';
+
+  void _go(_Step to) {
     setState(() {
-      busy = true;
+      step = to;
       error = null;
     });
+  }
+
+  Future<void> _checkCompany() async {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      error = null;
+      companyError = server.text.trim().isEmpty ? 'Escribe el nombre de tu empresa.' : null;
+      codeError = withCode && tenant.text.trim().isEmpty ? 'Escribe el código de empresa.' : null;
+    });
+    if (companyError != null || codeError != null) return;
+    setState(() => busy = true);
     try {
-      await ref.read(authProvider.notifier).login(
-            server: server.text,
-            tenantCode: advanced ? tenant.text : null,
-            username: user.text,
-            password: password.text,
-          );
-    } on ApiException catch (e) {
-      setState(() => error = switch (e.code) {
-            'network' => 'No hay conexión con ${server.text}. Revisa la dirección o tu señal.',
-            'tenant_not_found' => 'No existe esa empresa.',
-            'tenant_required' => 'Este servidor pide el código de empresa (opciones avanzadas).',
-            _ => e.userMessage,
-          });
+      await ref.read(authProvider.notifier).checkCompany(server.text, tenantCode: _code);
+      if (!mounted) return;
+      _go(_Step.credentials);
+      WidgetsBinding.instance.addPostFrameCallback((_) => (user.text.isEmpty ? _userFocus : _passwordFocus).requestFocus());
     } on FormatException catch (e) {
-      setState(() => error = e.message);
+      setState(() => companyError = e.message);
+    } on ApiException catch (e) {
+      _companyFailed(e);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  /// A company problem found on either step lands on the company step.
+  void _companyFailed(ApiException e) {
+    setState(() {
+      step = _Step.company;
+      switch (e.code) {
+        case 'network':
+          error = _networkMessage();
+        case 'tenant_not_found':
+          if (_code != null) {
+            codeError = 'No encontramos ese código de empresa.';
+          } else {
+            companyError = 'No encontramos esa empresa. Revisa cómo la escribiste.';
+          }
+        case 'tenant_required':
+          withCode = true;
+          codeError = 'Este servidor pide el código de empresa.';
+        default:
+          error = e.userMessage;
+      }
+    });
+  }
+
+  Future<void> _signIn() async {
+    setState(() {
+      error = null;
+      userError = user.text.trim().isEmpty ? 'Escribe tu usuario.' : null;
+      passwordError = password.text.isEmpty ? 'Escribe tu contraseña.' : null;
+    });
+    if (userError != null || passwordError != null) return;
+    FocusScope.of(context).unfocus();
+    setState(() => busy = true);
+    try {
+      await ref.read(authProvider.notifier).login(server: server.text, tenantCode: _code, username: user.text, password: password.text);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      if (e.code == 'network') {
+        setState(() => error = _networkMessage());
+      } else if (e.code.startsWith('tenant_')) {
+        _companyFailed(e);
+      } else if (e.code == 'invalid_credentials') {
+        setState(() => passwordError = e.userMessage);
+        password.clear();
+        _passwordFocus.requestFocus();
+      } else {
+        setState(() => error = e.userMessage);
+      }
+    } on FormatException catch (e) {
+      setState(() {
+        step = _Step.company;
+        companyError = e.message;
+      });
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -63,102 +158,155 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final nr = context.nr;
-    return Scaffold(
-      body: Stack(children: [
-        const _Glow(),
-        SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: ListView(shrinkWrap: true, padding: const EdgeInsets.fromLTRB(NrSpace.xxl, NrSpace.xl, NrSpace.xxl, NrSpace.xxl), children: [
-                const NrEntrance(child: _Brand()),
-                const SizedBox(height: NrSpace.xxl),
-                NrEntrance(index: 1, child: Text('Entra a tu empresa', style: NrText.display(context))),
-                const SizedBox(height: NrSpace.xs),
-                NrEntrance(index: 1, child: Text('Venta en ruta, inventario y supervisión. Funciona sin señal.', style: NrText.body(context).copyWith(color: nr.secondary))),
-                const SizedBox(height: NrSpace.xxl),
-                NrEntrance(
-                  index: 2,
-                  child: NrCard(
-                    depth: NrDepth.floating,
-                    radius: NrRadius.hero,
-                    padding: const EdgeInsets.all(NrSpace.xl),
-                    child: AutofillGroup(
+    final reduce = nrReduceMotion(context);
+    final company = step == _Step.company;
+    return PopScope(
+      canPop: company,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && !busy) _go(_Step.company);
+      },
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: nr.night ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+        child: Scaffold(
+          backgroundColor: authBackground(nr),
+          body: SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: const EdgeInsets.fromLTRB(NrSpace.xxl, NrSpace.lg, NrSpace.xxl, NrSpace.xl),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                        TextField(
-                          controller: server,
-                          keyboardType: TextInputType.url,
-                          autocorrect: false,
-                          textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(labelText: 'Empresa o servidor', hintText: 'miempresa  ·  miempresa.nori.mx', prefixIcon: Icon(Icons.business_rounded)),
-                        ),
-                        AnimatedSize(
-                          duration: NrMotion.base,
-                          curve: NrMotion.ease,
-                          child: advanced
-                              ? Padding(
-                                  padding: const EdgeInsets.only(top: NrSpace.md),
-                                  child: TextField(
-                                    controller: tenant,
-                                    autocorrect: false,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Código de empresa (dominio central)',
-                                      helperText: 'Solo si el servidor es compartido, p. ej. api.nori.mx',
-                                      prefixIcon: Icon(Icons.key_rounded),
-                                    ),
-                                  ),
-                                )
-                              : const SizedBox(width: double.infinity),
-                        ),
-                        const SizedBox(height: NrSpace.md),
-                        TextField(
-                          controller: user,
-                          autocorrect: false,
-                          autofillHints: const [AutofillHints.username],
-                          textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(labelText: 'Usuario', prefixIcon: Icon(Icons.person_rounded)),
-                        ),
-                        const SizedBox(height: NrSpace.md),
-                        TextField(
-                          controller: password,
-                          obscureText: obscure,
-                          autofillHints: const [AutofillHints.password],
-                          onSubmitted: (_) => _submit(),
-                          decoration: InputDecoration(
-                            labelText: 'Contraseña',
-                            prefixIcon: const Icon(Icons.lock_rounded),
-                            suffixIcon: IconButton(
-                              tooltip: obscure ? 'Mostrar' : 'Ocultar',
-                              icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                              onPressed: () => setState(() => obscure = !obscure),
-                            ),
+                        const NrEntrance(child: Align(alignment: Alignment.centerLeft, child: NoriMark(size: 44))),
+                        const SizedBox(height: NrSpace.xxxl + NrSpace.sm),
+                        AnimatedSwitcher(
+                          duration: reduce ? Duration.zero : NrMotion.base,
+                          switchInCurve: NrMotion.emphasized,
+                          switchOutCurve: Curves.easeIn,
+                          layoutBuilder: (current, previous) => Stack(alignment: Alignment.topLeft, children: [...previous, ?current]),
+                          transitionBuilder: (child, a) => FadeTransition(
+                            opacity: a,
+                            child: SlideTransition(position: Tween(begin: const Offset(0.04, 0), end: Offset.zero).animate(a), child: child),
                           ),
+                          child: company ? _companyStep(context) : _credentialsStep(context),
                         ),
-                        AnimatedSize(
-                          duration: NrMotion.base,
-                          curve: NrMotion.ease,
-                          child: error == null
+                        _resize(
+                          context,
+                          error == null
                               ? const SizedBox(width: double.infinity)
                               : Padding(
-                                  padding: const EdgeInsets.only(top: NrSpace.md),
+                                  padding: const EdgeInsets.only(top: NrSpace.xl),
                                   child: NrBanner(message: error!, tone: NrTone.danger, icon: Icons.error_outline_rounded),
                                 ),
                         ),
-                        const SizedBox(height: NrSpace.xl),
-                        NrButton(label: 'Entrar', icon: Icons.arrow_forward_rounded, busy: busy, onPressed: _submit),
                       ]),
                     ),
                   ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(NrSpace.xxl, NrSpace.sm, NrSpace.xxl, NrSpace.lg),
+                    child: NrButton(
+                      key: const ValueKey('login-submit'),
+                      label: company ? 'Continuar' : 'Entrar',
+                      busy: busy,
+                      onPressed: company ? _checkCompany : _signIn,
+                    ),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _companyStep(BuildContext context) {
+    final nr = context.nr;
+    return Column(key: const ValueKey(_Step.company), crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Semantics(header: true, child: Text('Entra a tu empresa', style: NrText.display(context))),
+      const SizedBox(height: NrSpace.sm),
+      Text('Escribe el nombre de tu empresa o la dirección de su servidor.', style: NrText.body(context).copyWith(color: nr.secondary)),
+      const SizedBox(height: NrSpace.xxxl),
+      AuthField(
+        label: 'Empresa',
+        controller: server,
+        hint: 'miempresa',
+        error: companyError,
+        enabled: !busy,
+        keyboardType: TextInputType.url,
+        textInputAction: withCode ? TextInputAction.next : TextInputAction.go,
+        onChanged: (_) => setState(() => companyError = null),
+        onSubmitted: withCode ? null : (_) => _checkCompany(),
+      ),
+      _resize(
+        context,
+        withCode
+            ? Padding(
+                padding: const EdgeInsets.only(top: NrSpace.xl),
+                child: AuthField(
+                  label: 'Código de empresa',
+                  controller: tenant,
+                  hint: 'miempresa',
+                  helper: 'Solo si tu servidor te lo pide.',
+                  error: codeError,
+                  enabled: !busy,
+                  textInputAction: TextInputAction.go,
+                  onChanged: (_) => setState(() => codeError = null),
+                  onSubmitted: (_) => _checkCompany(),
                 ),
-                const SizedBox(height: NrSpace.md),
-                Center(
+              )
+            : Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: NrSpace.sm),
                   child: TextButton(
-                    onPressed: () => setState(() => advanced = !advanced),
-                    child: Text(advanced ? 'Ocultar opciones avanzadas' : 'Opciones avanzadas'),
+                    onPressed: busy ? null : () => setState(() => withCode = true),
+                    style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 44), foregroundColor: nr.secondary),
+                    child: const Text('Agregar código de empresa'),
                   ),
                 ),
-              ]),
-            ),
+              ),
+      ),
+    ]);
+  }
+
+  Widget _credentialsStep(BuildContext context) {
+    return AutofillGroup(
+      key: const ValueKey(_Step.credentials),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Semantics(header: true, child: Text('Inicia sesión', style: NrText.display(context))),
+        const SizedBox(height: NrSpace.md),
+        Align(alignment: Alignment.centerLeft, child: _CompanyChip(label: _companyLabel, onChange: busy ? null : () => _go(_Step.company))),
+        const SizedBox(height: NrSpace.xxxl),
+        AuthField(
+          label: 'Usuario',
+          controller: user,
+          focusNode: _userFocus,
+          error: userError,
+          enabled: !busy,
+          autofillHints: const [AutofillHints.username],
+          textInputAction: TextInputAction.next,
+          onChanged: (_) => setState(() => userError = null),
+          onSubmitted: (_) => _passwordFocus.requestFocus(),
+        ),
+        const SizedBox(height: NrSpace.xl),
+        AuthField(
+          label: 'Contraseña',
+          controller: password,
+          focusNode: _passwordFocus,
+          error: passwordError,
+          enabled: !busy,
+          obscure: obscure,
+          autofillHints: const [AutofillHints.password],
+          textInputAction: TextInputAction.go,
+          onChanged: (_) => setState(() => passwordError = null),
+          onSubmitted: (_) => _signIn(),
+          trailing: IconButton(
+            tooltip: obscure ? 'Mostrar contraseña' : 'Ocultar contraseña',
+            icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 22),
+            onPressed: () => setState(() => obscure = !obscure),
           ),
         ),
       ]),
@@ -166,21 +314,37 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 }
 
-/// Halo suave del acento detrás del inicio de sesión (como el punto de venta de nori-web).
-class _Glow extends StatelessWidget {
-  const _Glow();
+/// The company the user is signing in to, with a way back to change it.
+class _CompanyChip extends StatelessWidget {
+  const _CompanyChip({required this.label, required this.onChange});
+
+  final String label;
+  final VoidCallback? onChange;
 
   @override
   Widget build(BuildContext context) {
     final nr = context.nr;
-    return Positioned.fill(
-      child: IgnorePointer(
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: RadialGradient(
-              center: const Alignment(0.9, -1.1),
-              radius: 1.2,
-              colors: [nr.accent.withValues(alpha: nr.night ? 0.22 : 0.14), nr.accent.withValues(alpha: 0)],
+    return Semantics(
+      button: true,
+      label: 'Empresa $label. Cambiar',
+      excludeSemantics: true,
+      child: Material(
+        color: nr.raised,
+        borderRadius: BorderRadius.circular(NrRadius.pill),
+        child: InkWell(
+          onTap: onChange,
+          borderRadius: BorderRadius.circular(NrRadius.pill),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 40),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(NrSpace.md, NrSpace.sm, NrSpace.lg, NrSpace.sm),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.apartment_rounded, size: 18, color: nr.secondary),
+                const SizedBox(width: NrSpace.sm),
+                Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: NrText.label(context).copyWith(color: nr.headline))),
+                const SizedBox(width: NrSpace.md),
+                Text('Cambiar', style: NrText.label(context).copyWith(color: nr.link, fontWeight: FontWeight.w600)),
+              ]),
             ),
           ),
         ),
@@ -189,7 +353,104 @@ class _Glow extends StatelessWidget {
   }
 }
 
-/// Desbloqueo rápido con huella o rostro.
+/// Filled input with its label on top and no outline until it has focus or an error.
+class AuthField extends StatelessWidget {
+  const AuthField({
+    super.key,
+    required this.label,
+    required this.controller,
+    this.hint,
+    this.helper,
+    this.error,
+    this.enabled = true,
+    this.obscure = false,
+    this.focusNode,
+    this.keyboardType,
+    this.textInputAction,
+    this.autofillHints,
+    this.onChanged,
+    this.onSubmitted,
+    this.trailing,
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final String? hint;
+  final String? helper;
+  final String? error;
+  final bool enabled;
+  final bool obscure;
+  final FocusNode? focusNode;
+  final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
+  final Iterable<String>? autofillHints;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final nr = context.nr;
+    final r = BorderRadius.circular(NrRadius.xl);
+    final idle = nr.highContrast ? BorderSide(color: nr.borderStrong, width: 1.5) : BorderSide.none;
+    final hasError = error != null;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text(label, style: NrText.label(context).copyWith(color: hasError ? nr.danger : nr.secondary, fontWeight: FontWeight.w600)),
+      const SizedBox(height: NrSpace.sm),
+      TextField(
+        controller: controller,
+        focusNode: focusNode,
+        enabled: enabled,
+        obscureText: obscure,
+        autocorrect: false,
+        enableSuggestions: !obscure,
+        textCapitalization: TextCapitalization.none,
+        keyboardType: keyboardType,
+        textInputAction: textInputAction,
+        autofillHints: autofillHints,
+        onChanged: onChanged,
+        onSubmitted: onSubmitted,
+        style: NrText.body(context).copyWith(fontSize: 17, color: nr.headline),
+        cursorColor: nr.accent,
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: NrText.body(context).copyWith(fontSize: 17, color: nr.muted),
+          filled: true,
+          fillColor: hasError ? nr.dangerBg : nr.raised,
+          isDense: false,
+          contentPadding: const EdgeInsets.symmetric(horizontal: NrSpace.lg, vertical: 17),
+          suffixIcon: trailing,
+          suffixIconColor: nr.secondary,
+          border: OutlineInputBorder(borderRadius: r, borderSide: idle),
+          enabledBorder: OutlineInputBorder(borderRadius: r, borderSide: hasError ? BorderSide(color: nr.danger, width: 1.5) : idle),
+          disabledBorder: OutlineInputBorder(borderRadius: r, borderSide: idle),
+          focusedBorder: OutlineInputBorder(borderRadius: r, borderSide: BorderSide(color: hasError ? nr.danger : nr.accent, width: 2)),
+        ),
+      ),
+      _resize(
+        context,
+        duration: NrMotion.fast,
+        hasError
+            ? Padding(
+                padding: const EdgeInsets.only(top: NrSpace.sm),
+                child: Semantics(
+                  liveRegion: true,
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Padding(padding: const EdgeInsets.only(top: 1), child: Icon(Icons.error_rounded, size: 16, color: nr.danger)),
+                    const SizedBox(width: NrSpace.xs + 2),
+                    Expanded(child: Text(error!, style: NrText.bodySm(context).copyWith(color: nr.danger, fontWeight: FontWeight.w500))),
+                  ]),
+                ),
+              )
+            : helper != null
+                ? Padding(padding: const EdgeInsets.only(top: NrSpace.sm), child: Text(helper!, style: NrText.bodySm(context)))
+                : const SizedBox(width: double.infinity),
+      ),
+    ]);
+  }
+}
+
+/// Quick unlock with fingerprint or face.
 class UnlockPage extends ConsumerStatefulWidget {
   const UnlockPage({super.key});
 
@@ -209,38 +470,30 @@ class _UnlockPageState extends ConsumerState<UnlockPage> {
     final s = ref.watch(sessionProvider);
     final nr = context.nr;
     return Scaffold(
-      body: Stack(children: [
-        const _Glow(),
-        SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(NrSpace.xxl),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              const Spacer(),
-              const _Brand(),
-              const SizedBox(height: NrSpace.xxl),
-              Row(children: [
-                NrAvatar(s?.userName ?? '', size: 56, color: nr.accent),
-                const SizedBox(width: NrSpace.md),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Hola, ${s?.userName ?? ''}', style: NrText.title(context)),
-                    Text(s?.tenantName ?? '', style: NrText.bodySm(context)),
-                  ]),
-                ),
-              ]),
-              const Spacer(flex: 2),
-              NrButton(label: 'Desbloquear', icon: Icons.fingerprint_rounded, onPressed: () => ref.read(authProvider.notifier).unlock()),
-              const SizedBox(height: NrSpace.sm),
-              NrButton(label: 'Entrar con contraseña', variant: NrButtonVariant.ghost, onPressed: () => ref.read(authProvider.notifier).logout()),
-            ]),
-          ),
+      backgroundColor: authBackground(nr),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(NrSpace.xxl, NrSpace.lg, NrSpace.xxl, NrSpace.xl),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const Align(alignment: Alignment.centerLeft, child: NoriMark(size: 44)),
+            const Spacer(),
+            NrAvatar(s?.userName ?? '', size: 64, color: nr.accent),
+            const SizedBox(height: NrSpace.xl),
+            Text('Hola, ${s?.userName ?? ''}', style: NrText.display(context)),
+            const SizedBox(height: NrSpace.xs),
+            Text(s?.tenantName ?? '', style: NrText.body(context).copyWith(color: nr.secondary)),
+            const Spacer(flex: 2),
+            NrButton(label: 'Desbloquear', icon: Icons.fingerprint_rounded, onPressed: () => ref.read(authProvider.notifier).unlock()),
+            const SizedBox(height: NrSpace.sm),
+            NrButton(label: 'Usar contraseña', variant: NrButtonVariant.ghost, onPressed: () => ref.read(authProvider.notifier).logout()),
+          ]),
         ),
-      ]),
+      ),
     );
   }
 }
 
-/// Almacén de trabajo de este dispositivo.
+/// Working warehouse of this device.
 class WarehousePage extends ConsumerStatefulWidget {
   const WarehousePage({super.key});
 

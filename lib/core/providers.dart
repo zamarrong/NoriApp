@@ -106,6 +106,14 @@ class AuthController extends Notifier<AuthState> {
     state = AuthState(AuthStatus.signedIn, session: session);
   }
 
+  /// Checks that the company exists on that server before asking for the password
+  /// (public call, no sign-in). Throws [FormatException] or [ApiException].
+  Future<ServerConfig> checkCompany(String server, {String? tenantCode}) async {
+    final config = ServerConfig.resolve(server, tenantCode: tenantCode);
+    await ApiClient(config: config).get('/meta/server-time');
+    return config;
+  }
+
   Future<void> _persist(Session s) async {
     await _secure.write(key: _tokenKey, value: s.token);
     await _secure.write(key: _sessionKey, value: jsonEncode(s.toJson()));
