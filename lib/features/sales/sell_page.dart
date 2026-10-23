@@ -359,7 +359,9 @@ Color saleTypeColor(String type) => switch (type) {
 /// Abre el carrito del tipo elegido para el cliente y lo guarda con el motor de
 /// documentos (cola sin señal, llave de idempotencia). Entrega y factura se
 /// pueden cobrar en el mismo paso. Regresa true si se guardó.
-Future<bool> startSaleDocument(BuildContext context, WidgetRef ref, Map<String, dynamic> customer, SaleType t) async {
+/// [extraBody] va tal cual en el documento (p. ej. `crm_deal_id`: la cotización
+/// hecha desde una oportunidad del CRM queda ligada a ella).
+Future<bool> startSaleDocument(BuildContext context, WidgetRef ref, Map<String, dynamic> customer, SaleType t, {Map<String, dynamic> extraBody = const {}}) async {
   final api = ref.read(apiProvider);
   final session = ref.read(sessionProvider)!;
   final id = (customer['id'] as num).toInt();
@@ -414,6 +416,7 @@ Future<bool> startSaleDocument(BuildContext context, WidgetRef ref, Map<String, 
           'lines': cart.lines.map((l) => l.toApi()).toList(),
           ...cart.header,
           if (cart.notes.isNotEmpty) 'notes': cart.notes,
+          ...extraBody,
         };
         TenderChoice? choice;
         if (t.collects && session.canCollect) {

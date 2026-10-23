@@ -9,6 +9,7 @@ import '../../core/design/design.dart';
 import '../../core/providers.dart';
 import '../../core/widgets/sync_indicator.dart';
 import '../collections/collection_page.dart';
+import '../crm/customer_deals.dart';
 import '../sales/sell_page.dart';
 import 'customer_card.dart';
 
@@ -384,6 +385,7 @@ class CustomerPage extends ConsumerWidget {
             ],
           ]),
         ),
+        CustomerDeals(customer: c),
         NrSectionHeader('Documentos abiertos', count: docs.isEmpty ? null : docs.length),
         _OpenDocs(customerId: customerId),
         NrSectionHeader('Actividad reciente'),

@@ -65,6 +65,14 @@ class MorePage extends ConsumerWidget {
             trailing: chevron,
             onTap: () => context.push('/sync'),
           ),
+          if (s.canCrm)
+            NrListRow(
+              leading: _lead(context, Icons.view_kanban_rounded, NrColors.hues[4]),
+              title: 'CRM',
+              subtitle: s.canCrmAll ? 'Oportunidades del equipo y tu agenda' : 'Mis oportunidades y mi agenda',
+              trailing: chevron,
+              onTap: () => context.push('/crm'),
+            ),
           if (s.canCheckPrices)
             NrListRow(leading: _lead(context, Icons.qr_code_scanner_rounded, NrColors.hues[1]), title: 'Checador de precios', trailing: chevron, onTap: () => context.push('/checker')),
           if (s.canFreeSell || s.canSell)

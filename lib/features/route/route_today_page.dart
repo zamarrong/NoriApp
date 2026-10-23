@@ -13,6 +13,8 @@ import '../../core/providers.dart';
 import '../../core/sync/outbox.dart';
 import '../../core/widgets/nori_logo.dart';
 import '../../core/widgets/sync_indicator.dart';
+import '../crm/crm_repo.dart' show crmAgendaProvider;
+import '../crm/crm_widgets.dart' show AgendaCard;
 import '../printing/printer.dart';
 import '../printing/templates.dart';
 import '../sales/quick_capture.dart';
@@ -94,6 +96,7 @@ class _RouteTodayPageState extends ConsumerState<RouteTodayPage> {
       onRefresh: () async {
         ref.invalidate(routeTodayProvider);
         ref.invalidate(kpisProvider);
+        if (session?.canCrm ?? false) ref.invalidate(crmAgendaProvider);
         await ref.read(routeTodayProvider.future).catchError((_) => const Cached(<String, dynamic>{}));
       },
       children: [
@@ -110,6 +113,7 @@ class _RouteTodayPageState extends ConsumerState<RouteTodayPage> {
                 NrSectionHeader(next['status'] == 'in_progress' ? 'En visita' : 'Siguiente parada'),
                 NrEntrance(index: 1, child: _NextStopCard(stop: next)),
               ],
+              const NrEntrance(index: 2, child: AgendaCard()),
               NrSectionHeader('Tu ruta', count: stops.length),
               NrSegmented<bool>(
                 values: const [false, true],
@@ -674,6 +678,7 @@ class _NoRouteToday extends ConsumerWidget {
           ),
         ),
       ],
+      const NrEntrance(index: 2, child: AgendaCard()),
       if (sync.pending > 0 || sync.failed > 0) ...[
         const SizedBox(height: NrSpace.md),
         NrCard(

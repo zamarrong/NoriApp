@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +7,9 @@ import '../features/more/settings_page.dart';
 import '../features/printing/printer_page.dart';
 import '../features/auth/auth_pages.dart';
 import '../features/checker/checker_page.dart';
+import '../features/crm/agenda_page.dart';
+import '../features/crm/crm_page.dart';
+import '../features/crm/deal_page.dart';
 import '../features/customers/customers_page.dart';
 import '../features/inventory/count_page.dart';
 import '../features/onboarding/onboarding_page.dart';
@@ -39,6 +43,9 @@ List<NavTab> tabsFor(Session s) => [
       const NavTab('/more', 'Más', Icons.grid_view_rounded, Icons.grid_view_rounded),
     ];
 
+/// Desarrollo: `flutter run --dart-define=NORI_START=/crm` abre la app con sesión en esa pantalla.
+const _devStart = kDebugMode ? String.fromEnvironment('NORI_START') : '';
+
 final routerProvider = Provider<GoRouter>((ref) {
   final refresh = ValueNotifier(0);
   ref.listen(authProvider, (_, _) => refresh.value++);
@@ -63,7 +70,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         case AuthStatus.signedIn:
           final s = auth.session!;
           if (s.mustChooseWarehouse && s.warehouseId == null && loc != '/warehouse') return '/warehouse';
-          if (loc == '/splash' || loc == '/login' || loc == '/unlock' || loc == '/') return tabsFor(s).first.path;
+          if (loc == '/splash' || loc == '/login' || loc == '/unlock' || loc == '/') return _devStart.isNotEmpty ? _devStart : tabsFor(s).first.path;
           return null;
       }
     },
@@ -87,6 +94,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/route/visit/:id', builder: (_, s) => VisitPage(visitId: int.parse(s.pathParameters['id']!))),
       GoRoute(path: '/customers/:id', builder: (_, s) => CustomerPage(customerId: int.parse(s.pathParameters['id']!))),
+      GoRoute(path: '/crm', builder: (_, _) => const CrmPage()),
+      GoRoute(path: '/crm/agenda', builder: (_, _) => const AgendaPage()),
+      GoRoute(path: '/crm/deals/:id', builder: (_, s) => DealPage(dealId: int.parse(s.pathParameters['id']!))),
       GoRoute(path: '/inventory/movement/:kind', builder: (_, s) => MovementPage(movement: s.pathParameters['kind']!)),
       GoRoute(path: '/inventory/requests', builder: (_, _) => const TransferRequestsPage()),
       GoRoute(path: '/inventory/counts', builder: (_, _) => const CountsPage()),

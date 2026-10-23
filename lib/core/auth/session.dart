@@ -64,6 +64,12 @@ class Session {
         'goods_receipts.create', 'goods_issues.create', 'inventory_counts.update',
       ]);
   bool get isApprover => can('approvals.grant');
+
+  // CRM (ADR 0016 de nori-web): sin crm_deals.view_all, solo las oportunidades propias.
+  bool get canCrm => can('crm_deals.view');
+  bool get canCrmCreate => can('crm_deals.create');
+  bool get canCrmUpdate => can('crm_deals.update');
+  bool get canCrmAll => can('crm_deals.view_all');
   bool get canKpis => isApprover || canSell || canRoute;
 
   bool get needsRefresh => expiresAt != null && expiresAt!.difference(DateTime.now()).inDays < 5;
