@@ -1,12 +1,12 @@
 /// A qué servidor y empresa habla la app.
 ///
-/// - Código simple ("miempresa") → `https://miempresa.nori.mx` (dominio de la empresa).
-/// - URL o dominio ("https://api.nori.mx", "192.168.1.5:8000") → esa base; si
+/// - Código simple ("miempresa") → `https://miempresa.nori.software` (dominio de la empresa).
+/// - URL o dominio ("https://api.nori.software", "192.168.1.5:8000") → esa base; si
 ///   además se da un código de empresa, va en `X-Tenant` (dominio central).
 class ServerConfig {
   const ServerConfig({required this.baseUrl, this.tenant});
 
-  static const defaultRootDomain = 'nori.mx';
+  static const defaultRootDomain = 'nori.software';
 
   /// Raíz del servidor, sin `/api/v1` ni diagonal final.
   final String baseUrl;
@@ -43,6 +43,6 @@ class ServerConfig {
 
   factory ServerConfig.fromJson(Map<String, dynamic> j) => ServerConfig(baseUrl: '${j['base_url']}', tenant: j['tenant'] as String?);
 
-  /// Texto corto para la pantalla de inicio ("miempresa.nori.mx").
+  /// Texto corto para la pantalla de inicio ("miempresa.nori.software").
   String get label => tenant == null ? Uri.parse(baseUrl).host : '${Uri.parse(baseUrl).host} · $tenant';
 }

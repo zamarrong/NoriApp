@@ -21,7 +21,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 Session _session(List<String> permissions, {int id = 7}) => Session.fromApi(
       {'token': 't', 'user': {'id': id, 'name': 'Ernesto Villalobos'}, 'permissions': permissions, 'working_context': {}},
-      server: const ServerConfig(baseUrl: 'https://demo.nori.mx'),
+      server: const ServerConfig(baseUrl: 'https://demo.nori.software'),
     );
 
 const _seller = ['crm_deals.view', 'crm_deals.create', 'crm_deals.update', 'quotations.create'];
@@ -62,7 +62,7 @@ Map<String, dynamic> _deal(int id, String title, int stage, String amount, {Stri
 
 /// Cliente de la API con respuestas preparadas por ruta (sin red).
 class _FakeApi extends ApiClient {
-  _FakeApi(this.handler) : super(config: const ServerConfig(baseUrl: 'https://demo.nori.mx'));
+  _FakeApi(this.handler) : super(config: const ServerConfig(baseUrl: 'https://demo.nori.software'));
 
   final dynamic Function(String method, String path, Map<String, dynamic>? query) handler;
   final calls = <String>[];

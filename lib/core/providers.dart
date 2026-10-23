@@ -202,7 +202,7 @@ final sessionProvider = Provider<Session?>((ref) => ref.watch(authProvider).sess
 final apiProvider = Provider<ApiClient>((ref) {
   final session = ref.watch(sessionProvider);
   return ApiClient(
-    config: session?.server ?? const ServerConfig(baseUrl: 'https://nori.mx'),
+    config: session?.server ?? const ServerConfig(baseUrl: 'https://nori.software'),
     token: session?.token,
     onUnauthenticated: () => ref.read(authProvider.notifier).expired(),
   );

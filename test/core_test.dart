@@ -25,13 +25,13 @@ void main() {
   group('ServerConfig', () {
     test('código simple usa el dominio de la empresa', () {
       final c = ServerConfig.resolve('MiEmpresa');
-      expect(c.baseUrl, 'https://miempresa.nori.mx');
+      expect(c.baseUrl, 'https://miempresa.nori.software');
       expect(c.tenant, isNull);
     });
 
     test('dominio central con X-Tenant y limpia /api/v1', () {
-      final c = ServerConfig.resolve('api.nori.mx/api/v1/', tenantCode: 'miempresa');
-      expect(c.baseUrl, 'https://api.nori.mx');
+      final c = ServerConfig.resolve('api.nori.software/api/v1/', tenantCode: 'miempresa');
+      expect(c.baseUrl, 'https://api.nori.software');
       expect(c.tenant, 'miempresa');
     });
 
@@ -109,7 +109,7 @@ void main() {
     final s = Session.fromApi({
       'user': {'id': 1},
       'permissions': ['sales_orders.create', 'invoices.create'],
-    }, server: const ServerConfig(baseUrl: 'https://miempresa.nori.mx'));
+    }, server: const ServerConfig(baseUrl: 'https://miempresa.nori.software'));
     expect(allowedSaleTypes(s).map((t) => t.type), ['sales_order', 'invoice']);
     expect(s.canFreeSell, isTrue);
   });

@@ -11,7 +11,7 @@ import 'package:nori_mobile/core/widgets/sync_indicator.dart';
 
 Session _session(List<String> permissions) => Session.fromApi(
       {'token': 't', 'user': {'id': 1, 'name': 'Ana'}, 'permissions': permissions, 'working_context': {}},
-      server: const ServerConfig(baseUrl: 'https://demo.nori.mx'),
+      server: const ServerConfig(baseUrl: 'https://demo.nori.software'),
     );
 
 void main() {

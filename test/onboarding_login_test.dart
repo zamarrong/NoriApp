@@ -93,7 +93,7 @@ void main() {
     await tester.pump();
     expect(find.text('Escribe el nombre de tu empresa.'), findsOneWidget);
 
-    await tester.enterText(find.byType(TextField).first, 'api.nori.mx');
+    await tester.enterText(find.byType(TextField).first, 'api.nori.software');
     await tester.pump();
     expect(find.text('Escribe el nombre de tu empresa.'), findsNothing);
 
