@@ -179,7 +179,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                       padding: const EdgeInsets.fromLTRB(NrSpace.xxl, NrSpace.lg, NrSpace.xxl, NrSpace.xl),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                        const NrEntrance(child: Align(alignment: Alignment.centerLeft, child: NoriMark(size: 44))),
+                        const NrEntrance(child: Align(alignment: Alignment.centerLeft, child: NoriLogo(height: 34))),
                         const SizedBox(height: NrSpace.xxxl + NrSpace.sm),
                         AnimatedSwitcher(
                           duration: reduce ? Duration.zero : NrMotion.base,
@@ -475,7 +475,7 @@ class _UnlockPageState extends ConsumerState<UnlockPage> {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(NrSpace.xxl, NrSpace.lg, NrSpace.xxl, NrSpace.xl),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            const Align(alignment: Alignment.centerLeft, child: NoriMark(size: 44)),
+            const Align(alignment: Alignment.centerLeft, child: NoriLogo(height: 34)),
             const Spacer(),
             NrAvatar(s?.userName ?? '', size: 64, color: nr.accent),
             const SizedBox(height: NrSpace.xl),

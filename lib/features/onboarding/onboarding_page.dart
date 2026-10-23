@@ -87,7 +87,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
             child: SizedBox(
               height: NrTouch.min,
               child: Row(children: [
-                const NoriMark(size: 34),
+                const NoriLogo(height: 28),
                 const Spacer(),
                 AnimatedOpacity(
                   opacity: _last ? 0 : 1,
