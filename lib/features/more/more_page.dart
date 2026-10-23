@@ -131,6 +131,16 @@ class MorePage extends ConsumerWidget {
             ),
           ]),
         ),
+        NrSectionHeader('Cuenta'),
+        NrGroup(inset: 64, children: [
+          NrListRow(
+            leading: _lead(context, Icons.person_remove_rounded, NrColors.hues[0]),
+            title: 'Eliminar mi cuenta',
+            subtitle: 'Pide que borremos tu usuario y tus datos personales',
+            trailing: chevron,
+            onTap: () => context.push('/account/delete'),
+          ),
+        ]),
         const SizedBox(height: NrSpace.xxl),
         NrButton(
           icon: Icons.logout_rounded,

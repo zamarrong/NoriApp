@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/more/account_deletion_page.dart';
 import '../features/more/settings_page.dart';
 import '../features/printing/printer_page.dart';
 import '../features/auth/auth_pages.dart';
@@ -106,6 +107,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/documents', builder: (_, _) => const MyDocumentsPage()),
       GoRoute(path: '/checker', builder: (_, _) => const CheckerPage()),
       GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
+      GoRoute(path: '/account/delete', builder: (_, _) => const AccountDeletionPage()),
       GoRoute(path: '/printer', builder: (_, _) => const PrinterPage()),
     ],
   );
